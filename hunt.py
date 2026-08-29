@@ -40,7 +40,7 @@ from detections import format_for_prompt
 from report import HuntReport
 from tools import loganalysis as la
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 MODEL = "claude-sonnet-5"
 MAX_TURNS = 16

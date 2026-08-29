@@ -1,6 +1,6 @@
 # claude-recon-agent
 
-**v0.3.0**
+**v0.3.1**
 
 A small, Claude-orchestrated security study kit with two halves: a **red-team
 recon agent** for practicing enumeration on machines you're authorized to
