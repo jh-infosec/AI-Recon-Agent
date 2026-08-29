@@ -37,6 +37,28 @@ recorded in `architecture.md` under "Cleared Defects".
 Shipped first because the wordlist item was a live defect and everything else
 is feature work.
 
+## v0.3.2 - containment (shipped)
+
+Defects from an external review of v0.3.1, taken before v0.4.0 on the
+reviewer's reasoning: the coverage gate makes the agent more capable, so the
+containment boundary should be airtight first. Recorded in `architecture.md`
+under "Cleared Defects".
+
+- [x] Web `port` validated, closing a real allowlist bypass through URL
+      userinfo. The highest-severity defect found in the project so far.
+- [x] `list_sources` brought into line with the workspace lock `read_lines`
+      already enforced.
+- [x] Nested-quantifier regexes refused. The v0.3.1 truncation bounded the
+      input and not the execution, and its regression test asserted otherwise
+      while passing for the wrong reason.
+- [x] `searchsploit_lookup` refuses flag-shaped queries.
+- [x] Markdown fences sized to survive backticks in tool output; reports
+      written UTF-8; version single-sourced in `version.py`.
+
+What this release does not do is bound regex execution. See "Regex execution
+is screened, not bounded" in `architecture.md` for why, and what it would
+cost.
+
 ## v0.4.0 - the model sees what the tools found
 
 - **Structured tool output.** `nmap -oX -` and `ffuf -of json` parsed into

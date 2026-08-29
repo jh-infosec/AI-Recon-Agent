@@ -1,6 +1,6 @@
 # claude-recon-agent
 
-**v0.3.1**
+**v0.3.2**
 
 A small, Claude-orchestrated security study kit with two halves: a **red-team
 recon agent** for practicing enumeration on machines you're authorized to
@@ -78,7 +78,7 @@ python agent.py --target 10.10.11.123
 Run this from the machine that's actually on your HTB/THM VPN connection
 (e.g. your Kali VM) - the script doesn't manage the VPN for you.
 
-## Using the new tools (v0.2.0)
+## The recon toolbox
 
 You don't call these directly - Claude decides when to use them - but it
 helps to know what's in the box:
@@ -92,7 +92,7 @@ helps to know what's in the box:
   and record lookups. A successful AXFR against a misconfigured server is a
   classic, high-value finding.
 
-## Blue team: threat hunting (v0.3.0)
+## Blue team: threat hunting
 
 The defensive counterpart. Instead of enumerating a target, `hunt.py` points
 Claude at a folder of **logs** and has it reconstruct what happened, map the
@@ -125,6 +125,7 @@ then compare against the agent's findings (see `samples/README.md`).
 
 ```
 agent.py                  - RED TEAM: recon loop (Claude + tool-use)
+version.py                - single source of the project version
 hunt.py                   - BLUE TEAM: threat-hunting loop over logs
 safety.py                 - recon-side allowlist gate
 knowledge.py              - recon finding -> MITRE ATT&CK -> HTB Academy lookup
@@ -135,11 +136,13 @@ report.py                 - SessionReport (recon) + HuntReport (blue) -> MD + HT
 config/targets.yaml       - recon authorized-targets allowlist (edit per session)
 samples/                  - synthetic logs for the hunt agent (safe to run)
 reports/                  - generated reports land here (git-ignored)
-tests/                    - pytest suites for the safety gate and log tools
+tests/                    - pytest suites: safety gate, workspace lock, regressions
 pyproject.toml            - ruff + pytest config
 requirements.txt          - runtime deps       requirements-dev.txt - dev/CI deps
 .github/workflows/ci.yml  - lints, tests, and audits deps on push
 CHANGELOG.md              - what changed between versions
+ROADMAP.md                - what ships when, and why it is placed there
+architecture.md           - design principles, constraints, cleared defects
 ```
 
 ## Development
@@ -147,7 +150,7 @@ CHANGELOG.md              - what changed between versions
 ```bash
 pip install -r requirements-dev.txt
 ruff check .      # lint
-pytest -q         # run the safety-gate tests
+pytest -q         # run the full suite (118 tests)
 pip-audit -r requirements.txt   # supply-chain audit
 ```
 
@@ -167,24 +170,15 @@ https://docs.claude.com/en/docs/about-claude/models/overview
 
 ## Roadmap
 
-Done in 0.2.0: `ffuf` (dir + vhost), DNS enumeration, MITRE/Academy mapping,
-HTML reports, a real test suite.
+`ROADMAP.md` is the source of truth for what ships when, and
+`architecture.md` carries the design reasoning, the known constraints and a
+record of every defect cleared so far. In short: v0.4.0 gives the model
+structured tool output and adds a deterministic methodology coverage gate,
+v0.5.0 adds state across runs, and v0.8.0 is the purple-team feature that
+narrates a recon report and a hunt report of the same box from both sides.
 
-Done in 0.3.0: the blue-team threat-hunting agent (`hunt.py`) over log files,
-with read-only path-locked tools, a defensive ATT&CK mapping, and bundled
-sample logs.
-
-Ideas still on the list:
-
-- **Cross-agent story** - feed a recon report and a hunt report of the same
-  box to Claude and have it narrate the attack from both sides (great for
-  purple-team study).
-- Support more log formats in the hunt agent (Windows Security EVTX exported
-  to CSV/JSON, Sysmon, JSON-lines app logs) and a `timeline` tool that merges
-  events across sources.
-- Smarter recon: TLS cert inspection to auto-discover vhosts/domains, plus
-  JSON report output and `--wordlist-profile` (small/medium/large).
-- Per-session token + cost tracking printed at the end, and API retry/backoff.
+Exploitation, payload generation and anything that writes to a target are
+explicitly not planned, at any version.
 
 ## Costs
 

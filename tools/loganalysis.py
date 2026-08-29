@@ -90,13 +90,46 @@ def _read_text(path: Path) -> str:
 # --------------------------------------------------------------------------- #
 # tools
 # --------------------------------------------------------------------------- #
+def _is_inside(root: Path, candidate: Path) -> bool:
+    """True if `candidate` (already resolved) sits at or under `root`."""
+    try:
+        return os.path.commonpath([str(root), str(candidate)]) == str(root)
+    except ValueError:  # different drives on Windows
+        return False
+
+
 def list_sources(workspace: str) -> dict:
-    """List the log files available in the workspace, with size and line count."""
+    """
+    List the log files available in the workspace, with size and line count.
+
+    Entries are subject to the same containment rule as read_lines. Until
+    v0.3.2 this walked with rglob and called is_file(), both of which follow
+    symlinks, so a link inside the workspace pointing at /etc/passwd was
+    listed AND opened to count its lines - out-of-workspace read access, from
+    the half of the pair that was supposed to be the safe one. Anything this
+    function lists must be something read_lines would allow.
+    """
     root = _resolve_root(workspace)
-    files = [root] if root.is_file() else [
-        p for p in sorted(root.rglob("*"))
-        if p.is_file() and p.suffix.lower() in _TEXT_EXTS
-    ]
+    if root.is_file():
+        files = [root]
+    else:
+        files = []
+        # followlinks=False stops os.walk descending symlinked directories;
+        # the per-entry resolve below catches symlinked files.
+        for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+            dirnames[:] = sorted(dirnames)
+            for name in sorted(filenames):
+                p = Path(dirpath) / name
+                if p.is_symlink():
+                    continue
+                try:
+                    resolved = p.resolve()
+                except (OSError, RuntimeError):
+                    continue
+                if not _is_inside(root, resolved):
+                    continue
+                if resolved.suffix.lower() in _TEXT_EXTS and resolved.is_file():
+                    files.append(resolved)
 
     rows = []
     for p in files:
@@ -142,6 +175,49 @@ def read_lines(workspace: str, source: str = "", start: int = 1, count: int = 10
     }
 
 
+class UnsafePatternError(RuntimeError):
+    pass
+
+
+# A quantified group whose body is itself quantified - (a+)+, (a*)*, ([a-z]+)*
+# and friends - is the shape that makes backtracking exponential. So is an
+# alternation of equivalent branches, (x|x)*.
+_NESTED_QUANT = re.compile(r"\((?:\?[:=!][^)]*|[^)])*[+*}]\s*\)\s*[+*{]")
+_ALT_REPEAT = re.compile(r"\(([^)|]+)\|\1\)\s*[+*{]")
+
+
+def check_pattern(pattern: str) -> None:
+    """
+    Reject model-supplied regexes whose shape makes catastrophic backtracking
+    possible.
+
+    v0.3.1 truncated each line to MAX_LINE_SCAN and treated the problem as
+    solved. That bounds the input, not the work: `(a+)+$` against 4000
+    characters that fail to match still explores exponentially many paths and
+    hangs the process. The v0.3.1 regression test missed it because it used a
+    pattern that SUCCEEDS, and catastrophic backtracking only happens when a
+    match fails.
+
+    Be clear about what this is: a screen on pattern shape, not a hard bound
+    on execution. Python's `re` has no timeout, `signal.alarm` is Unix-only
+    (and this project is run on Windows), and a watchdog thread cannot
+    interrupt a match because it holds the GIL in C. A genuine bound needs a
+    subprocess - which would break the "no subprocess on the hunt path"
+    property in architecture.md - or the third-party `regex` module, which
+    supports `timeout=`. Both are recorded there as the real fix; this screen
+    plus truncation is the proportionate one for a local study tool where the
+    pattern comes from a model rather than an attacker.
+    """
+    if _NESTED_QUANT.search(pattern) or _ALT_REPEAT.search(pattern):
+        raise UnsafePatternError(
+            "Pattern refused: it contains a nested quantifier (a quantified "
+            "group inside another quantifier, e.g. '(a+)+'), which can make "
+            "matching take exponential time. Rewrite it without the inner "
+            "quantifier - '(a+)+' is equivalent to 'a+' - or use a more "
+            "specific pattern."
+        )
+
+
 def search(workspace: str, source: str = "", pattern: str = "", max_matches: int = 100) -> dict:
     """Regex search within a log file. Read-only grep, essentially."""
     path = _safe_path(workspace, source)
@@ -154,7 +230,16 @@ def search(workspace: str, source: str = "", pattern: str = "", max_matches: int
             "timed_out": False,
         }
     try:
+        check_pattern(pattern)
         rx = re.compile(pattern)
+    except UnsafePatternError as e:
+        return {
+            "command": f"search(pattern={pattern!r})",
+            "returncode": 2,
+            "stdout": "",
+            "stderr": str(e),
+            "timed_out": False,
+        }
     except re.error as e:
         return {
             "command": f"search(pattern={pattern!r})",

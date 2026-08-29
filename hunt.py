@@ -39,8 +39,7 @@ import anthropic
 from detections import format_for_prompt
 from report import HuntReport
 from tools import loganalysis as la
-
-__version__ = "0.3.1"
+from version import __version__  # noqa: F401
 
 MODEL = "claude-sonnet-5"
 MAX_TURNS = 16

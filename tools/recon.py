@@ -36,6 +36,8 @@ from safety import (
     validate_extensions,
     validate_host_format,
     validate_ports,
+    validate_search_term,
+    validate_web_port,
 )
 
 DEFAULT_TIMEOUT = 300  # seconds
@@ -126,6 +128,7 @@ def run_nmap(target: str, ports: str = "top1000") -> dict:
 def run_whatweb(target: str, port: int = 80, https: bool = False) -> dict:
     """Web fingerprinting - server, framework, CMS, JS libs."""
     assert_authorized(target)
+    port = validate_web_port(port)
     binary = _require_binary("whatweb", "whatweb")
 
     scheme = "https" if https else "http"
@@ -143,6 +146,7 @@ def run_gobuster(
 ) -> dict:
     """Directory/file enumeration against a web service."""
     assert_authorized(target)
+    port = validate_web_port(port)
     try:
         wl = resolve_wordlist(wordlist)
     except NotAuthorizedError as e:
@@ -181,6 +185,7 @@ def run_ffuf(
     Still pure enumeration; still gated by assert_authorized().
     """
     assert_authorized(target)
+    port = validate_web_port(port)
     scheme = "https" if https else "http"
 
     # Validate arguments BEFORE requiring the binary, so a usage mistake
@@ -313,6 +318,18 @@ def searchsploit_lookup(query: str) -> dict:
     a hit as a pointer to go read about the CVE/technique yourself, not as
     something this agent will execute for you.
     """
+    try:
+        term = validate_search_term(query)
+    except NotAuthorizedError as e:
+        return {
+            "command": "searchsploit (refused)",
+            "returncode": 2,
+            "stdout": "",
+            "stderr": str(e),
+            "timed_out": False,
+        }
     binary = _require_binary("searchsploit", "exploitdb")
-    cmd = [binary, query]
+    # '--' would be cleaner but searchsploit does not accept it; the leading
+    # hyphen check in validate_search_term is what keeps this a search.
+    cmd = [binary, term]
     return _run(cmd, timeout=60)

@@ -159,6 +159,63 @@ def resolve_wordlist(path: str) -> Path:
     )
 
 
+def validate_web_port(port) -> int:
+    """
+    Validate a single port that will be interpolated into a URL, returning it
+    as an int.
+
+    This exists because of a real allowlist bypass. The web wrappers build
+    `f"{scheme}://{target}:{port}"`, and a string port of "80@evil.example"
+    produces "http://10.10.11.42:80@evil.example". Under URL syntax
+    everything before the '@' is userinfo, so the host a client actually
+    contacts is evil.example - the authorized target is never touched and the
+    gate is bypassed entirely while appearing to have been honoured.
+
+    The tool schema declares `port` as an integer, but a schema is a request
+    to the model, not an enforcement: whatever arrives has to be checked here.
+    Returning an int rather than the original value is deliberate, so the
+    caller cannot interpolate an attacker-shaped string by accident.
+    """
+    if isinstance(port, bool):  # bool is an int subclass; reject it explicitly
+        raise NotAuthorizedError(f"'{port}' is not a valid port.")
+    if isinstance(port, int):
+        value = port
+    else:
+        text = str(port).strip()
+        if not text.isdigit():  # rejects '', '-1', '80@x', '80 -x', '80;id'
+            raise NotAuthorizedError(
+                f"'{port}' is not a valid port. A port must be a plain number "
+                f"between 1 and 65535; anything else can change the host in the "
+                f"URL and bypass the target allowlist."
+            )
+        value = int(text)
+    if not 0 < value <= 65535:
+        raise NotAuthorizedError(f"Port {value} is out of range (1-65535).")
+    return value
+
+
+def validate_search_term(term: str) -> str:
+    """
+    Validate a free-form search term destined for a subprocess argument.
+
+    Rejects anything starting with '-' so a model-supplied string cannot turn
+    into a flag. `searchsploit --update` is the motivating case: it fetches
+    over the network and writes to disk, which would falsify the claim that
+    `searchsploit_lookup` never leaves the machine - the sole justification
+    for it being exempt from the gate.
+    """
+    text = (term or "").strip()
+    if not text:
+        raise NotAuthorizedError("A non-empty search term is required.")
+    if text.startswith("-"):
+        raise NotAuthorizedError(
+            f"Search term '{term}' starts with a hyphen and would be read as a "
+            f"command-line flag rather than a search term. Pass a service and "
+            f"version, e.g. 'vsftpd 2.3.4'."
+        )
+    return text
+
+
 def validate_extensions(extensions: str) -> str:
     """Validate an ffuf extension list like '.php,.txt,.bak'. Empty is allowed."""
     ext = (extensions or "").strip()

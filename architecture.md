@@ -249,12 +249,25 @@ not used on the prompt path.
 solved this same problem in its v0.1.2 streaming refactor and this project has
 not adopted the result.
 
-### list_sources follows directory symlinks
+### Regex execution is screened, not bounded
 
-`rglob` traverses symlinked directories, so filenames outside the workspace
-can appear in a listing. Reads are still blocked by `_safe_path`, so this is
-disclosure rather than access, but it is a gap in a boundary otherwise held
-tightly.
+`search` refuses patterns containing nested quantifiers and truncates each
+line before matching. Neither is a hard bound on execution: a pathological
+pattern the screen does not recognise would still run unbounded, because
+Python's `re` has no timeout, `signal.alarm` is Unix-only and this project is
+run on Windows, and a watchdog thread cannot interrupt a match that holds the
+GIL in C.
+
+A genuine bound needs one of two things, both of which cost something the
+project currently declines to pay: a subprocess, which would break the "no
+network, no shell, no subprocess" property that makes the hunt path easy to
+reason about, or the third-party `regex` module, which supports `timeout=`
+and would be the first runtime dependency the blue half has taken.
+
+This is recorded as a limitation rather than a defect because the pattern
+comes from a model rather than an attacker, and the failure is a hung local
+session rather than a boundary crossing. If the hunt side ever ingests
+patterns from anywhere else, this stops being acceptable.
 
 ### Cost is unbounded and unreported
 
@@ -308,6 +321,54 @@ docstring and asserted by a test.
 **Model-controlled argv values had no format constraint.** `ports` and
 `extensions` are now pattern-checked by `safety.validate_ports` and
 `safety.validate_extensions`.
+
+Fixed in v0.3.2, from an external review of v0.3.1. Tests in
+`tests/test_regressions_v032.py`.
+
+**The web `port` was never validated, which bypassed the allowlist.** The web
+wrappers build `f"{scheme}://{target}:{port}"`, so a port of
+`80@unapproved.example` produced `http://10.10.11.42:80@unapproved.example` -
+under URL syntax everything before the `@` is userinfo, so the host contacted
+was `unapproved.example` and the authorized target was never touched. The tool
+schema declared `port` as an integer, but a schema is a request to the model,
+not an enforcement. Now `safety.validate_web_port` returns an int or refuses.
+
+This is the same mistake as the v0.3.0 wordlist defect, in the argument next
+to the one v0.3.1 fixed, and it is the reason "the gate validates the
+destination, not every argument" is stated as a design principle above: the
+principle was written and the adjacent argument was still missed.
+
+**`list_sources` followed file symlinks and opened them.** It walked with
+`rglob` and called `is_file()`, both of which follow links, so a symlink
+inside the workspace pointing at a file outside it was listed and read to
+count its lines. `read_lines` blocked the same escape correctly, which made
+the inconsistency the bug. Now walks with `followlinks=False`, skips
+symlinks, and resolves every entry against the workspace root. Anything
+listed is now something `read_lines` would allow.
+
+**The v0.3.1 ReDoS fix did not fix ReDoS, and its test asserted that it did.**
+Truncating to `MAX_LINE_SCAN` bounds the input, not the work. Worse, the
+regression test used `(a+)+$` against a string of all `a`, which matches
+immediately - catastrophic backtracking only occurs when a match FAILS - so
+it passed while the defect was open. Patterns with nested quantifiers are now
+refused outright, and the replacement test puts the failing character inside
+the scan window. See "Regex execution is screened, not bounded" above for
+what this still does not do.
+
+**`searchsploit_lookup` accepted flag-shaped input.** It passed the query
+straight to argv, so `--update` invoked update mode, which fetches over the
+network and writes to disk - falsifying the "never leaves the machine" claim
+that is the sole justification for this wrapper being exempt from the gate.
+`safety.validate_search_term` now requires a non-empty term and refuses a
+leading hyphen.
+
+**Markdown reports could be broken out of, and footers lied about the
+version.** Tool output was interpolated inside a fixed ``` fence, so a banner
+containing a triple backtick closed it early and rendered the rest as
+Markdown. Fences are now sized to exceed the longest backtick run in the
+content. Reports are written UTF-8 explicitly rather than at the platform
+default. The two HTML footers hardcoded "v0.2.0" and "v0.3.0"; the version is
+now single-sourced in `version.py` and asserted by a test.
 
 ## Accepted Designs
 
@@ -364,7 +425,7 @@ The following files are part of the project structure and must be preserved:
 
 ```
 agent.py            hunt.py             safety.py
-knowledge.py        detections.py       report.py
+version.py          knowledge.py        detections.py       report.py
 tools/recon.py      tools/loganalysis.py
 config/targets.yaml samples/
 requirements.txt    requirements-dev.txt
