@@ -59,18 +59,24 @@ What this release does not do is bound regex execution. See "Regex execution
 is screened, not bounded" in `architecture.md` for why, and what it would
 cost.
 
-## v0.4.0 - the model sees what the tools found
+## v0.4.0 - the model sees what the tools found (shipped)
 
-- **Structured tool output.** `nmap -oX -` and `ffuf -of json` parsed into
-  objects; the model receives fields rather than truncated text.
-- **Methodology coverage gate.** Deterministic comparison of tool calls made
-  against attack surface discovered, rendered as a coverage table in the
-  report, with a distinct exit code when incomplete.
-- **Token and cost telemetry** per turn, totalled in the report footer.
-- **API retry with backoff.**
+- [x] **Structured tool output.** `nmap -oX -`, `ffuf -of json` and
+      `whatweb --log-json` parsed into objects in `parsers.py`.
+- [x] **Methodology coverage gate.** `surface.py` accumulates the surface and
+      checks it against the tool calls made; coverage table in both reports,
+      exit code 3 when incomplete.
+- [x] **Token and cost telemetry** per turn, totalled in the report.
+- [x] **API retry with backoff.**
 
-Structured output comes before the gate in the same release because the gate
+Structured output came before the gate in the same release because the gate
 counts things, and counting them requires them to be structured.
+
+Structuring the output turned out not to be sufficient on its own: a host with
+25 open services still exceeded the payload budget once NSE script output was
+included, so the payload would have truncated and dropped ports anyway - the
+same silent loss, at a different size. `parsers.compact_for_model` degrades
+detail progressively and never drops a port; see its docstring.
 
 ## v0.5.0 - state across runs
 
