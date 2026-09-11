@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.6] - 2026-09-11
+
+Found by the first live offensive run, against a THM Windows box.
+
+Fixed: **The coverage gate failed a session for correct judgment.** nmap reports WinRM on 5985 as service `http`, product `Microsoft HTTPAPI`, so the gate treated it as a web service, demanded a fingerprint and directory enumeration, and exited 3 when the model rightly declined to run gobuster against a PowerShell remoting endpoint. Ports that speak HTTP as a transport without serving content (5985/5986 WinRM, 623 IPMI, 9100 JetDirect) and products that identify a management API are now excluded — and the exclusion is shown in the coverage table with its reason, rather than dropped silently, so the report explains why no web checks ran. A genuine web server is still required to be checked.
+
+Tests: 10 new (223 total), built from the actual scan output.
+
+## [0.4.5] - 2026-09-11
+
+Changed: Both finish-tool schemas now require the fields the report is built from. `finish_hunt` requires `findings` (min 1, each with title, severity, MITRE id, evidence and recommendation) alongside `summary`; `finish_session` requires `study_pointers`. They were optional, and across three live runs the model read that as permission to write the whole analysis as narrative and leave the structure empty — a rejected first attempt, and a wasted API turn, every single session. A schema is a stronger signal than a sentence in the prompt.
+
+Tests: 5 new (213 total).
+
 ## [0.4.4] - 2026-09-11
 
 Three defects from live use.

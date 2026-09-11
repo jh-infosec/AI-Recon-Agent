@@ -31,6 +31,56 @@ from dataclasses import dataclass, field
 # them. `tunnel="ssl"` on an http service is how nmap reports HTTPS.
 WEB_SERVICES = {"http", "https", "http-alt", "http-proxy", "https-alt"}
 
+# Ports that speak HTTP as a TRANSPORT without serving content. nmap reports
+# WinRM on 5985 as service "http", product "Microsoft HTTPAPI", so the naive
+# rule marked it as a web service and then failed the run for not fingerprinting
+# it - on a live THM Windows box, the model correctly declined to run gobuster
+# against a PowerShell remoting endpoint and the gate marked it down for being
+# right.
+#
+# That is the characteristic failure of a coverage gate: it cannot tell "was
+# not done" from "correctly did not apply", so without this it penalises exactly
+# the judgment it is supposed to be teaching.
+NON_CONTENT_HTTP_PORTS = {
+    5985: "WinRM (PowerShell remoting transport, not a web app)",
+    5986: "WinRM over HTTPS (PowerShell remoting transport, not a web app)",
+    623: "IPMI/ASF remote management",
+    9100: "JetDirect printer control",
+}
+
+# Product strings that identify a management or API endpoint rather than a
+# content-serving web server. Checked case-insensitively as a substring, so a
+# genuine web server that merely mentions one of these is not caught.
+NON_CONTENT_HTTP_PRODUCTS = (
+    "microsoft httpapi",
+    "microsoft windows rpc",
+)
+
+
+def is_content_web_service(port: int, service: str, product: str) -> tuple:
+    """
+    Decide whether an HTTP-speaking port actually serves content worth
+    enumerating. Returns (is_content, reason_if_not).
+
+    A reason is returned only for ports that LOOKED like web services, so the
+    coverage table explains the ones a reader might expect to see checked and
+    stays silent about the rest. Port 135 is msrpc with product "Microsoft
+    Windows RPC"; it matches a management-API marker but was never a web
+    candidate, and a row saying it was "correctly excluded from web checks"
+    would be noise.
+    """
+    looks_web = (service or "") in WEB_SERVICES or port in NON_CONTENT_HTTP_PORTS
+    if not looks_web:
+        return False, ""
+
+    if port in NON_CONTENT_HTTP_PORTS:
+        return False, NON_CONTENT_HTTP_PORTS[port]
+    low = (product or "").lower()
+    for marker in NON_CONTENT_HTTP_PRODUCTS:
+        if marker in low:
+            return False, f"{product} is a management API, not a web application"
+    return True, ""
+
 
 @dataclass
 class AttackSurface:
@@ -39,6 +89,8 @@ class AttackSurface:
     web_ports: dict = field(default_factory=dict)     # port -> is_https
     hostnames: set = field(default_factory=set)
     dns_open: bool = False
+    # HTTP-speaking ports deliberately NOT treated as web services, with why.
+    non_content_http: dict = field(default_factory=dict)
     scanned: bool = False                             # has nmap run at all
 
     # what was done
@@ -66,10 +118,15 @@ class AttackSurface:
                         x for x in (svc, p.get("product"), p.get("version")) if x
                     )
                     self.services[port] = label or svc
-                    if svc in WEB_SERVICES:
+                    is_web, why = is_content_web_service(port, svc, p.get("product") or "")
+                    if is_web:
                         self.web_ports[port] = (
                             p.get("tunnel") == "ssl" or svc.startswith("https")
                         )
+                    elif why:
+                        # Record the exclusion rather than dropping it silently,
+                        # so the report can say why no web checks ran there.
+                        self.non_content_http[port] = why
                     if svc == "domain" or port == 53:
                         self.dns_open = True
             for name in parsed.get("hostnames", []):
@@ -108,6 +165,7 @@ class AttackSurface:
             "web_ports": sorted(self.web_ports),
             "hostnames": sorted(self.hostnames),
             "dns_open": self.dns_open,
+            "non_content_http": {str(k): v for k, v in sorted(self.non_content_http.items())},
         }
 
 
@@ -166,6 +224,15 @@ def coverage(surface: AttackSurface) -> list:
                 port in surface.enumerated,
                 "directory enumeration ran" if port in surface.enumerated
                 else f"port {port} serves HTTP but no directory enumeration was run",
+            )
+        )
+
+    for port, why in sorted(surface.non_content_http.items()):
+        checks.append(
+            Check(
+                f"Port {port} correctly excluded from web checks",
+                True,
+                f"{why} - directory enumeration would not be meaningful here",
             )
         )
 

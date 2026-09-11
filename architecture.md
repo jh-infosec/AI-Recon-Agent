@@ -209,6 +209,17 @@ lazy one. It answers only whether each discovered thing was followed up at
 all, which is the question a study tool should ask, because the methodology is
 what is being learned.
 
+It also cannot, by itself, tell "was not done" from "correctly did not apply",
+and that distinction is where it does real damage when it gets it wrong. The
+first live run against a Windows box failed because nmap labels WinRM on 5985
+as `http`: the gate demanded directory enumeration against a PowerShell
+remoting endpoint, and marked the session incomplete when the model correctly
+refused. A gate that penalises good judgment teaches the opposite of what it
+was built for, so known non-content HTTP endpoints are excluded by port and by
+product string - and the exclusion is reported rather than hidden, because a
+check that silently vanishes is indistinguishable from one that was never
+written.
+
 ### telemetry.py
 
 Per-turn token counts and an estimated session cost. Prices are a local table
@@ -279,6 +290,17 @@ The five defects previously listed here as *open defect* were cleared in
 v0.3.1 and have moved to "Cleared Defects" at the end of this section, where
 they are kept as a record of what the code once did and what test now holds
 it. What remains below is limitation rather than defect.
+
+### The schema is the instruction the model actually follows
+
+Both finish tools require the fields the report is built from, not just a
+summary. When `findings` was optional, three consecutive live runs produced a
+full narrative and an empty structure - despite the prompt and the tool
+description both saying the payload was the report. The prose said one thing
+and the schema said another, and the schema won every time.
+
+The validation in `completeness.py` stays as the backstop. It catches what
+gets through; the schema is what stops it being attempted.
 
 ### Calling the finish tool is not producing a conclusion
 

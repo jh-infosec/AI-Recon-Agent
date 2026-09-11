@@ -214,13 +214,20 @@ TOOLS = [
     },
     {
         "name": "finish_session",
-        "description": "Call this when recon is sufficiently complete. Ends the session.",
+        "description": (
+            "Call this when recon is sufficiently complete. Ends the session. "
+            "This payload IS the report - prose written in the conversation is "
+            "not saved. Fill every field."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "summary": {
                     "type": "string",
-                    "description": "Prose wrap-up of the attack surface and where you'd go next.",
+                    "description": (
+                        "The full narrative wrap-up: what the box exposes, how the "
+                        "pieces relate, and where you would go next. Not a one-liner."
+                    ),
                 },
                 "attack_surface": {
                     "type": "array",
@@ -234,7 +241,12 @@ TOOLS = [
                 },
                 "study_pointers": {
                     "type": "array",
-                    "description": "Concrete things to go read/practice (not the answer).",
+                    "minItems": 1,
+                    "description": (
+                        "Concrete things to go read and practice - not the answer or "
+                        "the flag. This is what makes the report a study artifact "
+                        "rather than a scan log."
+                    ),
                     "items": {
                         "type": "object",
                         "properties": {
@@ -243,11 +255,13 @@ TOOLS = [
                             "module": {"type": "string", "description": "HTB Academy module name"},
                             "cve": {"type": "string", "description": "CVE id if applicable, else empty"},
                         },
-                        "required": ["topic"],
+                        "required": ["topic", "mitre", "module"],
                     },
                 },
             },
-            "required": ["summary"],
+            # See the note on finish_hunt in hunt.py: leaving these optional
+            # reliably produced a full narrative and an empty structure.
+            "required": ["summary", "attack_surface", "leads", "study_pointers"],
         },
     },
 ]
