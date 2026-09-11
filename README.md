@@ -1,8 +1,8 @@
-# claude-recon-agent
+# ai-recon-agent
 
-**v0.4.0**
+**v0.4.1**
 
-A small, Claude-orchestrated security study kit with two halves: a **red-team
+ai-recon-agent is a small security study kit with two halves: a **red-team
 recon agent** for practicing enumeration on machines you're authorized to
 test, and a **blue-team threat-hunting agent** for practicing incident
 analysis over log files. Both use an AI model as the reasoning engine driving
@@ -154,7 +154,7 @@ architecture.md           - design principles, constraints, cleared defects
 ```bash
 pip install -r requirements-dev.txt
 ruff check .      # lint
-pytest -q         # run the full suite (160 tests)
+pytest -q         # run the full suite (165 tests)
 pip-audit -r requirements.txt   # supply-chain audit
 ```
 

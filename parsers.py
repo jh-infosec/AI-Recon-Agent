@@ -347,3 +347,183 @@ def parse_dig(text: str) -> dict:
     # presence of SOA alongside other record types is the practical signal.
     out["axfr_succeeded"] = "SOA" in types and len(types) > 1
     return out
+
+
+# --------------------------------------------------------------------------- #
+# human-readable rendering
+# --------------------------------------------------------------------------- #
+def render_markdown(tool_name: str, parsed: dict) -> str:
+    """
+    Render a parsed result as a readable Markdown table for the report.
+
+    v0.4.0 switched nmap to `-oX -`, which made stdout XML. The report writes
+    stdout verbatim, so the study artifact - the thing `architecture.md` calls
+    the deliverable - started showing raw XML where it used to show nmap's
+    readable table. Structuring the output for the model must not cost the
+    operator legibility.
+
+    Returns an empty string when there is nothing worth rendering, in which
+    case the caller falls back to raw output.
+    """
+    if not parsed or parsed.get("parse_error"):
+        return ""
+
+    if tool_name == "run_nmap":
+        rows = []
+        for host in parsed.get("hosts", []):
+            for p in host.get("ports", []):
+                if p.get("state") != "open":
+                    continue
+                svc = p.get("service") or ""
+                if p.get("tunnel") == "ssl" and not svc.startswith("https"):
+                    svc = f"{svc} (ssl)"
+                version = " ".join(x for x in (p.get("product"), p.get("version")) if x)
+                rows.append((p.get("port"), p.get("protocol") or "tcp", svc, version or "-"))
+        if not rows:
+            return "No open ports found.\n"
+        out = ["| Port | Proto | Service | Version |", "|---|---|---|---|"]
+        out += [f"| {a} | {b} | {c} | {d} |" for a, b, c, d in rows]
+        if parsed.get("hostnames"):
+            out.append("")
+            out.append(f"**Hostnames:** {', '.join(parsed['hostnames'])}")
+        # NSE script output is where the useful detail often is, so keep it -
+        # just out of the way.
+        scripted = [
+            (p["port"], sid, text)
+            for host in parsed.get("hosts", [])
+            for p in host.get("ports", [])
+            for sid, text in (p.get("scripts") or {}).items()
+        ]
+        if scripted:
+            out.append("")
+            out.append("<details><summary>NSE script output</summary>")
+            out.append("")
+            for port, sid, text in scripted:
+                out.append(f"- **{port}/{sid}**: {text.splitlines()[0][:300]}"
+                           if text else f"- **{port}/{sid}**")
+            out.append("")
+            out.append("</details>")
+        return "\n".join(out) + "\n"
+
+    if tool_name in {"run_ffuf", "run_gobuster"}:
+        results = parsed.get("results", [])
+        if not results:
+            return "No results.\n"
+        is_ffuf = "input" in results[0]
+        head = "| Found | Status | Size |" if is_ffuf else "| Path | Status | Size |"
+        out = [head, "|---|---|---|"]
+        for r in results[:100]:
+            name = r.get("input") if is_ffuf else r.get("path")
+            size = r.get("length") if is_ffuf else r.get("size")
+            out.append(f"| {name} | {r.get('status')} | {size if size is not None else '-'} |")
+        if len(results) > 100:
+            out.append("")
+            out.append(f"_...and {len(results) - 100} more (full count: {parsed.get('count')})_")
+        return "\n".join(out) + "\n"
+
+    if tool_name == "run_whatweb":
+        plugins = parsed.get("plugins") or {}
+        if not plugins:
+            return ""
+        out = ["| Plugin | Detail |", "|---|---|"]
+        for name, values in sorted(plugins.items()):
+            out.append(f"| {name} | {', '.join(values)[:200] if values else '-'} |")
+        return "\n".join(out) + "\n"
+
+    if tool_name == "run_dns_enum":
+        records = parsed.get("records", [])
+        out = []
+        if parsed.get("axfr_succeeded"):
+            out.append("**Zone transfer (AXFR) appears to have succeeded.**")
+            out.append("")
+        if records:
+            out += ["| Name | Type | Data |", "|---|---|---|"]
+            out += [
+                f"| {r.get('name')} | {r.get('type')} | {str(r.get('data'))[:120]} |"
+                for r in records[:100]
+            ]
+        return "\n".join(out) + "\n" if out else ""
+
+    return ""
+
+
+def render_html(tool_name: str, parsed: dict) -> str:
+    """
+    Render a parsed result as an HTML table for the report.
+
+    All values are HTML-escaped: these come from the target, and a service
+    banner is attacker-controlled text in a document somebody opens in a
+    browser. That rule predates this function - see report.py - and applies
+    here for exactly the same reason.
+    """
+    import html as _html
+
+    if not parsed or parsed.get("parse_error"):
+        return ""
+    e = _html.escape
+
+    def table(headers, rows):
+        head = "".join(f"<th>{e(str(h))}</th>" for h in headers)
+        body = "".join(
+            "<tr>" + "".join(f"<td>{e(str(c))}</td>" for c in row) + "</tr>"
+            for row in rows
+        )
+        return f"<table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>"
+
+    if tool_name == "run_nmap":
+        rows = []
+        for host in parsed.get("hosts", []):
+            for p in host.get("ports", []):
+                if p.get("state") != "open":
+                    continue
+                svc = p.get("service") or ""
+                if p.get("tunnel") == "ssl" and not svc.startswith("https"):
+                    svc = f"{svc} (ssl)"
+                version = " ".join(x for x in (p.get("product"), p.get("version")) if x)
+                rows.append([p.get("port"), p.get("protocol") or "tcp", svc, version or "-"])
+        if not rows:
+            return "<p>No open ports found.</p>"
+        out = table(["Port", "Proto", "Service", "Version"], rows)
+        if parsed.get("hostnames"):
+            out += f"<p><strong>Hostnames:</strong> {e(', '.join(parsed['hostnames']))}</p>"
+        return out
+
+    if tool_name in {"run_ffuf", "run_gobuster"}:
+        results = parsed.get("results", [])
+        if not results:
+            return "<p>No results.</p>"
+        is_ffuf = "input" in results[0]
+        rows = [
+            [
+                r.get("input") if is_ffuf else r.get("path"),
+                r.get("status"),
+                (r.get("length") if is_ffuf else r.get("size")) or "-",
+            ]
+            for r in results[:100]
+        ]
+        out = table(["Found" if is_ffuf else "Path", "Status", "Size"], rows)
+        if len(results) > 100:
+            out += f"<p><em>...and {len(results) - 100} more.</em></p>"
+        return out
+
+    if tool_name == "run_whatweb":
+        plugins = parsed.get("plugins") or {}
+        if not plugins:
+            return ""
+        rows = [[n, ", ".join(v)[:200] if v else "-"] for n, v in sorted(plugins.items())]
+        return table(["Plugin", "Detail"], rows)
+
+    if tool_name == "run_dns_enum":
+        records = parsed.get("records", [])
+        out = ""
+        if parsed.get("axfr_succeeded"):
+            out += ("<p class='disclaimer'>Zone transfer (AXFR) appears to have "
+                    "succeeded.</p>")
+        if records:
+            out += table(
+                ["Name", "Type", "Data"],
+                [[r.get("name"), r.get("type"), str(r.get("data"))[:120]] for r in records[:100]],
+            )
+        return out
+
+    return ""

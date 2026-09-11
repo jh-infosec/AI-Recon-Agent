@@ -1,8 +1,8 @@
-# claude-recon-agent Architecture
+# ai-recon-agent Architecture
 
 ## Overview
 
-claude-recon-agent is a study kit with two halves. `agent.py` drives
+ai-recon-agent is a study kit with two halves. `agent.py` drives
 enumeration against a host you are authorised to test. `hunt.py` drives
 analysis over a directory of logs. Both use a language model as the reasoning
 engine inside a tool-calling loop, and both produce a report whose purpose is
@@ -104,7 +104,13 @@ error from the reports.
 
 ### The report is the deliverable
 
-Every command, its raw output and the model's explanation are recorded.
+Every command, its output and the model's explanation are recorded.
+
+Parsed results are rendered as tables, with raw output kept beneath them in a
+collapsed block. When v0.4.0 moved nmap to `-oX -` for the model's benefit,
+the report started showing XML - a change that improved the reasoning and
+degraded the artifact. Both audiences are served deliberately: structured for
+the model, legible for the operator, raw retained for diagnosis.
 Reports are written incrementally, so a session that dies partway still leaves
 what it had.
 
@@ -175,8 +181,9 @@ JSON, gobuster text, dig text. Every parser is total - it returns a dict with
 whose output changes between versions must degrade the session rather than end
 it.
 
-`compact_for_model` renders a parsed result down to a payload budget by
-degrading detail progressively. It never drops an item: a port is what the
+`render_markdown` and `render_html` turn a parsed result into a readable
+table for the report; `compact_for_model` renders it down to a payload budget
+for the prompt by degrading detail progressively. It never drops an item: a port is what the
 model and the coverage gate both reason from, and a banner is not.
 
 ### surface.py

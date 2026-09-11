@@ -192,7 +192,7 @@ def main():
     )
     parser.add_argument("--logs", required=True, help="Directory or file of logs to analyze.")
     parser.add_argument("--focus", default="", help="Optional hint, e.g. 'possible SSH brute force'.")
-    parser.add_argument("--version", action="version", version=f"claude-hunt-agent {__version__}")
+    parser.add_argument("--version", action="version", version=f"ai-hunt-agent {__version__}")
     args = parser.parse_args()
 
     # Validate the workspace up front (also catches typos before any API spend).

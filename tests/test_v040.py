@@ -384,3 +384,91 @@ def test_ffuf_compaction_reports_when_it_truncated():
     view = parsers.compact_for_model("run_ffuf", parsed)
     assert view["count"] == 900          # the true total is always stated
     assert view["truncated"] is True     # and the loss is never silent
+
+
+# --------------------------------------------------------------------------- #
+# report legibility
+#
+# v0.4.0 switched nmap to -oX -, which made stdout XML. The report writes
+# stdout verbatim, so the study artifact started showing raw XML where v0.3.2
+# showed nmap's readable table. Structuring output for the model must not cost
+# the operator legibility.
+# --------------------------------------------------------------------------- #
+def test_nmap_renders_as_a_table_not_xml(tmp_path, monkeypatch):
+    import report
+    monkeypatch.setattr(report, "REPORTS_DIR", tmp_path)
+    parsed = parsers.parse_nmap_xml(NMAP_XML)
+    r = report.SessionReport("10.10.11.42", "htb", "t")
+    r.log_tool_call("run_nmap", {"ports": "top1000"}, {
+        "command": "nmap -oX - 10.10.11.42", "returncode": 0,
+        "stdout": NMAP_XML, "stderr": "", "timed_out": False, "parsed": parsed,
+    })
+    r.finalize_note()
+
+    md = r.path.read_text(encoding="utf-8")
+    assert "| Port | Proto | Service | Version |" in md
+    assert "| 22 | tcp | ssh | OpenSSH 8.2p1 |" in md
+    # raw XML is kept for diagnosis, but collapsed rather than front and centre
+    assert "<details><summary>raw output</summary>" in md
+    assert md.index("| Port |") < md.index("raw output")
+
+    html = r.html_path.read_text(encoding="utf-8")
+    assert "<th>Service</th>" in html
+    assert "OpenSSH" in html
+
+
+def test_rendered_html_escapes_target_controlled_text(tmp_path, monkeypatch):
+    """A service banner is attacker-controlled text in a browser document."""
+    import report
+    monkeypatch.setattr(report, "REPORTS_DIR", tmp_path)
+    hostile_xml = (
+        '<?xml version="1.0"?><nmaprun><host><address addr="10.10.11.42"/><ports>'
+        '<port protocol="tcp" portid="80"><state state="open"/>'
+        '<service name="http" product="&lt;script&gt;alert(1)&lt;/script&gt;" version="1"/>'
+        "</port></ports></host></nmaprun>"
+    )
+    parsed = parsers.parse_nmap_xml(hostile_xml)
+    r = report.SessionReport("10.10.11.42", "htb", "t")
+    r.log_tool_call("run_nmap", {}, {
+        "command": "nmap", "returncode": 0, "stdout": hostile_xml,
+        "stderr": "", "timed_out": False, "parsed": parsed,
+    })
+    r.finalize_note()
+    html = r.html_path.read_text(encoding="utf-8")
+    assert "<script>alert(1)</script>" not in html
+    assert "&lt;script&gt;" in html
+
+
+def test_unparsed_output_still_falls_back_to_raw(tmp_path, monkeypatch):
+    """A parser failure must degrade to raw output, not to an empty report."""
+    import report
+    monkeypatch.setattr(report, "REPORTS_DIR", tmp_path)
+    r = report.SessionReport("10.10.11.42", "htb", "t")
+    r.log_tool_call("run_nmap", {}, {
+        "command": "nmap", "returncode": 0, "stdout": "some unparseable output",
+        "stderr": "", "timed_out": False,
+        "parsed": {"parse_error": "nope", "open_ports": []},
+    })
+    r.finalize_note()
+    assert "some unparseable output" in r.path.read_text(encoding="utf-8")
+
+
+def test_ffuf_and_gobuster_render_tables():
+    ffuf = parsers.parse_ffuf_json(
+        '{"results":[{"input":{"FUZZ":"admin"},"status":301,"length":240}]}'
+    )
+    md = parsers.render_markdown("run_ffuf", ffuf)
+    assert "| admin | 301 | 240 |" in md
+
+    gob = parsers.parse_gobuster("/secret (Status: 200) [Size: 99]\n")
+    md2 = parsers.render_markdown("run_gobuster", gob)
+    assert "| /secret | 200 | 99 |" in md2
+
+
+def test_dns_render_calls_out_a_zone_transfer():
+    axfr = parsers.parse_dig(
+        "testbox.htb.\t604800\tIN\tSOA\tns1.testbox.htb. root.testbox.htb. 2 604800\n"
+        "dev.testbox.htb.\t604800\tIN\tA\t10.10.11.42\n"
+    )
+    assert "AXFR" in parsers.render_markdown("run_dns_enum", axfr)
+    assert "AXFR" in parsers.render_html("run_dns_enum", axfr)
