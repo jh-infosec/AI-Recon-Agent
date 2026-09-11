@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.4.9] - 2026-09-11
+
+Documentation only. The README had drifted from the code: it still claimed the test suite "concentrates on safety.py" (it now spans eight files and both boundaries), still listed `config/targets.yaml` in the project layout although that file is gitignored and no longer ships, and omitted `console.py` and `completeness.py`. Setup now includes copying the allowlist template on first run, and notes that gitignore only applies to files git is not already tracking — which is why a committed `targets.yaml` stayed committed.
+
 ## [0.4.8] - 2026-09-11
 
 Found on a live Kenobi run.
