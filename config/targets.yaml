@@ -21,10 +21,14 @@
 # platform must be one of: htb | thm | homelab
 # =============================================================================
 
-authorized_targets: []
+authorized_targets: 
+   - host: 10.113.166.2
+     platform: htb
+     note: "HTB machine 'Example' - spawned on my own VPN, 2026-08-13"
+
 
 # Example (uncomment and edit for your own session):
 # authorized_targets:
-#   - host: 10.10.11.123
+#   - host: 10.113.166.2
 #     platform: htb
 #     note: "HTB machine 'Example' - spawned on my own VPN, 2026-08-13"

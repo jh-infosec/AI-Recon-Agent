@@ -185,3 +185,93 @@ def test_agents_print_the_command_that_ran(name):
     """The exact invocation is what makes a run reproducible by hand."""
     src = (Path(__file__).parent.parent / name).read_text(encoding="utf-8")
     assert "console.command(" in src
+
+
+# --------------------------------------------------------------------------- #
+# v0.4.8 - highlights must not be drowned by server defaults
+#
+# From a live Kenobi run. The ffuf results contained one interesting hit and
+# thirteen Apache default `.ht*` denials, and the twelve-line cap kept the
+# denials while evicting index.html and admin.html into "...and 8 more". Noise
+# that pushes out signal is worse than showing nothing.
+# --------------------------------------------------------------------------- #
+import json as _json  # noqa: E402
+
+KENOBI_FFUF = _json.dumps({"results": [
+    {"input": {"FUZZ": "47d031"}, "status": 200, "length": 200},
+    {"input": {"FUZZ": ".htaccess"}, "status": 403, "length": 277},
+    {"input": {"FUZZ": ".htaccess.txt"}, "status": 403, "length": 277},
+    {"input": {"FUZZ": ".htpasswd.html"}, "status": 403, "length": 277},
+    {"input": {"FUZZ": ".hta.html"}, "status": 403, "length": 277},
+    {"input": {"FUZZ": ".htpasswd.php"}, "status": 403, "length": 277},
+    {"input": {"FUZZ": ".hta.php"}, "status": 403, "length": 277},
+    {"input": {"FUZZ": ".hta.txt"}, "status": 403, "length": 277},
+    {"input": {"FUZZ": ".htaccess.html"}, "status": 403, "length": 277},
+    {"input": {"FUZZ": ".hta"}, "status": 403, "length": 277},
+    {"input": {"FUZZ": ".htpasswd.txt"}, "status": 403, "length": 277},
+    {"input": {"FUZZ": ".htaccess.php"}, "status": 403, "length": 277},
+    {"input": {"FUZZ": ".htpasswd"}, "status": 403, "length": 277},
+    {"input": {"FUZZ": "index.html"}, "status": 200, "length": 200},
+    {"input": {"FUZZ": "admin.html"}, "status": 200, "length": 200},
+    {"input": {"FUZZ": "server-status"}, "status": 403, "length": 277},
+]})
+
+
+def test_real_content_is_not_evicted_by_server_defaults():
+    """index.html and admin.html were lost to '...and 8 more' in v0.4.7."""
+    lines = console.highlights("run_ffuf", parsers.parse_ffuf_json(KENOBI_FFUF))
+    joined = "\n".join(lines)
+    assert "index.html" in joined
+    assert "admin.html" in joined
+    assert "47d031" in joined
+
+
+def test_server_default_denials_are_suppressed_but_counted():
+    """Suppressed, not silently dropped - the reader must know they existed."""
+    lines = console.highlights("run_ffuf", parsers.parse_ffuf_json(KENOBI_FFUF))
+    assert not any(".htaccess" in x for x in lines if "hidden" not in x)
+    assert any("hidden" in x and "report" in x for x in lines)
+
+
+def test_suppression_does_not_apply_to_meaningful_403s():
+    """A 403 on /admin says the path exists - that is a real finding."""
+    parsed = parsers.parse_ffuf_json(
+        '{"results":[{"input":{"FUZZ":"admin"},"status":403,"length":512}]}'
+    )
+    assert any("admin" in x for x in console.highlights("run_ffuf", parsed))
+
+
+def test_results_are_ranked_by_interest():
+    parsed = parsers.parse_ffuf_json(_json.dumps({"results": [
+        {"input": {"FUZZ": "closed"}, "status": 403, "length": 1},
+        {"input": {"FUZZ": "protected"}, "status": 401, "length": 1},
+        {"input": {"FUZZ": "adir"}, "status": 301, "length": 1},
+        {"input": {"FUZZ": "page.php"}, "status": 200, "length": 1},
+    ]}))
+    lines = console.highlights("run_ffuf", parsed)
+    order = [line.split()[0] for line in lines]
+    assert order == ["page.php", "adir", "protected", "closed"]
+
+
+def test_ranking_survives_the_cap():
+    """Truncation must lose the least interesting entries, not the last ones."""
+    rows = [{"input": {"FUZZ": f"closed{i}"}, "status": 403, "length": 1} for i in range(30)]
+    rows.append({"input": {"FUZZ": "treasure.php"}, "status": 200, "length": 99})
+    lines = console.highlights("run_ffuf", parsers.parse_ffuf_json(_json.dumps({"results": rows})))
+    assert "treasure.php" in lines[0]
+
+
+def test_gobuster_paths_are_filtered_the_same_way():
+    parsed = parsers.parse_gobuster(
+        "/.htaccess (Status: 403) [Size: 277]\n/robots.txt (Status: 200) [Size: 30]\n"
+    )
+    lines = console.highlights("run_gobuster", parsed)
+    assert any("robots.txt" in x for x in lines)
+    assert not any(".htaccess" in x for x in lines if "hidden" not in x)
+
+
+def test_no_suppression_note_when_nothing_was_suppressed():
+    parsed = parsers.parse_ffuf_json(
+        '{"results":[{"input":{"FUZZ":"a"},"status":200,"length":1}]}'
+    )
+    assert not any("hidden" in x for x in console.highlights("run_ffuf", parsed))

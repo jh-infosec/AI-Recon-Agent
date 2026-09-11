@@ -258,6 +258,14 @@ on an interpretation would be the console asserting something no tool
 established, which is the same line `report.py` holds between observation and
 analysis.
 
+It does two things beyond filtering, because a highlight list that buries the
+useful line is not doing its job. Responses that are a property of the server
+rather than the target are suppressed - every Apache host on earth returns 403
+for `.ht*`, so those say nothing about this one - and the remainder is ranked
+before the cap applies, so truncation drops the least interesting entries
+rather than whatever sorted last. Both are display decisions only; the report
+keeps everything.
+
 ### report.py
 
 `SessionReport` and `HuntReport`, both rendering Markdown and self-contained

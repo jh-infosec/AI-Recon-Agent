@@ -123,6 +123,49 @@ def heading(text: str) -> str:
 # --------------------------------------------------------------------------- #
 MAX_HIGHLIGHTS = 12
 
+# Paths whose 403 is the web server's own default deny rule rather than
+# anything about this target. Apache ships `<Files ".ht*">` deny-all, so every
+# wordlist entry beginning .ht produces a 403 on every Apache host in the
+# world. On a real Kenobi run these filled eleven of twelve highlight slots
+# and pushed index.html and admin.html - the actual content - into the
+# "...and N more" line. Noise that evicts signal is worse than no highlights.
+_SERVER_DEFAULT_DENY = (".ht",)
+_LOW_INTEREST_PATHS = ("server-status", "server-info")
+
+
+def _is_server_default(name: str, status) -> bool:
+    """True for a 403 that every server of this type returns regardless of target."""
+    if status != 403:
+        return False
+    base = (name or "").lstrip("/").lower()
+    if base.startswith(_SERVER_DEFAULT_DENY):
+        return True
+    return any(base.startswith(p) for p in _LOW_INTEREST_PATHS)
+
+
+def _path_rank(status) -> int:
+    """
+    Order paths by how much they are worth looking at.
+
+    200 is content. A redirect usually means a real directory. 401 means
+    something is deliberately protected, which is interesting in its own
+    right. A bare 403 that is not a server default comes last - it says a
+    path exists but is closed.
+    """
+    try:
+        status = int(status)
+    except (TypeError, ValueError):
+        return 9
+    if status == 200:
+        return 0
+    if status in (301, 302, 307, 308):
+        return 1
+    if status == 401:
+        return 2
+    if status in (204, 405):
+        return 3
+    return 4
+
 
 def highlights(tool_name: str, parsed: dict) -> list:
     """
@@ -131,6 +174,13 @@ def highlights(tool_name: str, parsed: dict) -> list:
     Deliberately conservative: this marks what was FOUND, never what it might
     mean. Interpretation is the model's job and the report's, and a `[+]` on a
     guess would be the console asserting something no tool established.
+
+    Two things it does do, because a highlight list that buries the useful
+    line is not doing its job: it drops responses that are a property of the
+    server rather than the target, and it ranks what remains before capping,
+    so truncation loses the least interesting entries rather than whatever
+    happened to be last in the wordlist. Everything dropped here is still in
+    the report.
     """
     if not parsed or parsed.get("parse_error"):
         return []
@@ -151,13 +201,24 @@ def highlights(tool_name: str, parsed: dict) -> list:
             out.append(f"hostname: {name}")
 
     elif tool_name in {"run_ffuf", "run_gobuster"}:
+        rows = []
+        suppressed = 0
         for r in parsed.get("results", []):
             name = r.get("input") if "input" in r else r.get("path")
             size = r.get("length") if "input" in r else r.get("size")
-            out.append(
-                f"{name}  [status {r.get('status')}"
-                + (f", size {size}]" if size is not None else "]")
-            )
+            status = r.get("status")
+            if _is_server_default(name, status):
+                suppressed += 1
+                continue
+            rows.append((
+                _path_rank(status),
+                f"{name}  [status {status}"
+                + (f", size {size}]" if size is not None else "]"),
+            ))
+        rows.sort(key=lambda x: x[0])
+        out = [text for _, text in rows]
+        if suppressed:
+            out.append(f"({suppressed} server-default 403s hidden - see the report)")
 
     elif tool_name == "run_whatweb":
         for plugin, values in sorted((parsed.get("plugins") or {}).items()):

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.8] - 2026-09-11
+
+Found on a live Kenobi run.
+
+Fixed: **Console highlights were drowned by server defaults.** An ffuf run returned one interesting hit and thirteen Apache `.ht*` denials; the twelve-line cap kept the denials and evicted `index.html` and `admin.html` into "...and 8 more". Responses that are a property of the web server rather than the target (`.ht*` and `server-status` 403s) are now suppressed with a count, and the remainder is ranked — 200s, then redirects, then 401s, then other 403s — before capping, so truncation loses the least interesting entries rather than whatever came last in the wordlist. A 403 on a meaningful path still shows, because it tells you the path exists. Everything suppressed remains in the report.
+
+Tests: 7 new (249 total), built from the actual scan output and verified to fail against v0.4.7.
+
 ## [0.4.7] - 2026-09-11
 
 Added: Coloured console output (`console.py`). The **exact command** each tool ran is now printed in yellow, prefixed with `$`, so it can be copied straight into a shell and re-run by hand — `recon.py` already recorded it via `shlex.join`, it just was not being shown. **Findings are pulled out of the noise** and marked `[+]` in green: open ports with versions, discovered paths with status codes, whatweb plugins, a successful zone transfer. Coverage checks render `[✓]`/`[✗]`, and the hunt prints its findings by severity.
