@@ -39,10 +39,28 @@ import anthropic
 from detections import format_for_prompt
 from report import HuntReport
 from tools import loganalysis as la
-from version import __version__  # noqa: F401
+from version import __version__
+
+# 0 = the hunt reached a structured conclusion; 3 = it ran but never called
+# finish_hunt, so the report has a timeline and no findings. Distinct from 1
+# (error) so a harness can tell "partial" from "broken".
+EXIT_OK = 0
+EXIT_ERROR = 1
+EXIT_INCOMPLETE = 3  # noqa: F401
 
 MODEL = "claude-sonnet-5"
 MAX_TURNS = 16
+
+# 2048 proved too tight in practice: a detailed analysis turn hit the ceiling
+# mid-sentence, which ended the loop before the model ever called the finish
+# tool, so the report lost its entire findings section. See MAX_CONTINUATIONS.
+MAX_TOKENS = 4096
+
+# When a turn stops on max_tokens the response is a half-finished thought, not
+# a decision to stop. Continuing is correct, but it has to be bounded or a
+# model that never converges would loop until MAX_TURNS paying full price each
+# time.
+MAX_CONTINUATIONS = 3
 
 SYSTEM_PROMPT = f"""\
 You are a SOC analyst's study assistant helping a student practice threat \
@@ -220,10 +238,13 @@ def main():
 
     messages = [{"role": "user", "content": kickoff}]
 
+    continuations = 0
+    completed = False
+
     for _turn in range(MAX_TURNS):
         response = client.messages.create(
             model=MODEL,
-            max_tokens=2048,
+            max_tokens=MAX_TOKENS,
             system=SYSTEM_PROMPT,
             tools=TOOLS,
             messages=messages,
@@ -245,6 +266,7 @@ def main():
                 )
 
                 if block.name == "finish_hunt":
+                    completed = True
                     report.log_findings(block.input)
                     print(f"\n[hunt] Hunt complete.\n\n{block.input.get('summary', '')}\n")
                     finished = True
@@ -283,11 +305,45 @@ def main():
             break
         if tool_results:
             messages.append({"role": "user", "content": tool_results})
+        elif response.stop_reason == "max_tokens":
+            # The turn was cut off mid-thought. Ask it to carry on rather than
+            # treating a truncated sentence as a decision to stop - that is
+            # what silently cost the report its findings section.
+            continuations += 1
+            if continuations > MAX_CONTINUATIONS:
+                print(f"[hunt] Response truncated {continuations} times; giving up.")
+                break
+            print(f"[hunt] Response hit the token limit; continuing ({continuations}).")
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "Your previous message was cut off by the token limit. "
+                        "Continue from where you stopped. Keep it brief, and call "
+                        "finish_hunt when you have what you need."
+                    ),
+                }
+            )
         elif response.stop_reason != "tool_use":
             break
 
+    if not completed:
+        reason = (
+            "the model never called finish_hunt "
+            f"(stopped after {len(messages)} messages / {MAX_TURNS} turn limit)"
+        )
+        report.log_incomplete(reason)
+
     report.finalize_note()
     print(f"\n[hunt] Done. Reports:\n  {report.path}\n  {report.html_path}")
+
+    if not completed:
+        print(
+            "\n[hunt] INCOMPLETE: the hunt ended without a structured conclusion, so "
+            "the report has no findings, IOCs or next steps. Re-run, or raise "
+            "MAX_TURNS / MAX_TOKENS if the analysis was being cut short."
+        )
+        sys.exit(EXIT_INCOMPLETE)
 
 
 if __name__ == "__main__":

@@ -263,6 +263,21 @@ v0.3.1 and have moved to "Cleared Defects" at the end of this section, where
 they are kept as a record of what the code once did and what test now holds
 it. What remains below is limitation rather than defect.
 
+### Truncation is recoverable, incompleteness is reported
+
+A turn that stops on `max_tokens` is a half-finished thought, not a decision
+to stop, so the loop continues it - bounded by `MAX_CONTINUATIONS` so a model
+that never converges cannot loop to `MAX_TURNS` paying full price each time.
+
+If a session ends without calling its finish tool, both reports carry a
+"session incomplete" banner and the process exits 3. On the red side this sits
+alongside the coverage gate; on the blue side it is the only completeness
+signal there is.
+
+This was found by running the tool, not by testing it. Every test mocks the
+API and none had ever produced a `max_tokens` stop - a fixture only covers the
+situations someone thought to write down.
+
 ### No state between runs
 
 Every invocation starts from nothing. Running recon, doing manual work, and
