@@ -41,7 +41,7 @@ import anthropic
 
 import completeness
 import parsers
-from apiclient import call_with_retry
+from apiclient import call_with_retry, explain
 from knowledge import format_for_prompt
 from report import SessionReport
 from safety import NotAuthorizedError, assert_authorized
@@ -338,9 +338,10 @@ def main():
         try:
             response = call_with_retry(_create, on_retry=_note_retry)
         except Exception as e:  # noqa: BLE001
-            print(f"[agent] API call failed after retries: {type(e).__name__}: {e}")
-            report.log_analysis(f"Session aborted: API call failed ({type(e).__name__}).")
-            break
+            print(explain(e))
+            report.log_incomplete(f"the API call failed: {type(e).__name__}")
+            report.finalize_note()
+            sys.exit(EXIT_ERROR)
 
         telemetry.record(getattr(response, "usage", None))
 
@@ -360,7 +361,8 @@ def main():
                 )
 
                 if block.name == "finish_session":
-                    ok, reason = completeness.validate_session(block.input)
+                    payload = completeness.normalise_text(block.input)
+                    ok, reason = completeness.validate_session(payload)
                     if not ok and finish_retries < MAX_FINISH_RETRIES:
                         finish_retries += 1
                         print(f"[agent] finish_session rejected ({reason}); asking again.")
@@ -385,7 +387,7 @@ def main():
                         )
                         continue
                     completed = True
-                    report.log_final_summary(block.input)
+                    report.log_final_summary(payload)
                     print(f"\n[agent] Session complete.\n\n{block.input.get('summary', '')}\n")
                     finished = True
                     tool_results.append(

@@ -37,6 +37,7 @@ import sys
 import anthropic
 
 import completeness
+from apiclient import call_with_retry, explain
 from detections import format_for_prompt
 from report import HuntReport
 from tools import loganalysis as la
@@ -256,13 +257,28 @@ def main():
     finish_retries = 0
 
     for _turn in range(MAX_TURNS):
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=MAX_TOKENS,
-            system=SYSTEM_PROMPT,
-            tools=TOOLS,
-            messages=messages,
-        )
+        def _create(msgs=messages):
+            return client.messages.create(
+                model=MODEL,
+                max_tokens=MAX_TOKENS,
+                system=SYSTEM_PROMPT,
+                tools=TOOLS,
+                messages=msgs,
+            )
+
+        def _note_retry(attempt, delay, exc):
+            print(f"[hunt] {type(exc).__name__} - retry {attempt} in {delay:.1f}s")
+
+        try:
+            response = call_with_retry(_create, on_retry=_note_retry)
+        except Exception as exc:  # noqa: BLE001
+            # A traceback through the SDK's httpx internals is not something
+            # the operator wrote or can fix; the one useful sentence gets
+            # buried in it. Print the actionable version and stop.
+            print(explain(exc))
+            report.log_incomplete(f"the API call failed: {type(exc).__name__}")
+            report.finalize_note()
+            sys.exit(EXIT_ERROR)
 
         assistant_content = []
         tool_results = []
@@ -285,7 +301,8 @@ def main():
                     # analysis in prose and then called this with an empty
                     # payload, producing a report with a heading and nothing
                     # under it - and an exit code of 0.
-                    ok, reason = completeness.validate_hunt(block.input)
+                    payload = completeness.normalise_text(block.input)
+                    ok, reason = completeness.validate_hunt(payload)
                     if not ok and finish_retries < MAX_FINISH_RETRIES:
                         finish_retries += 1
                         print(f"[hunt] finish_hunt rejected ({reason}); asking again.")
@@ -304,8 +321,8 @@ def main():
                         report.log_incomplete(f"finish_hunt returned an unusable payload: {reason}")
                     else:
                         completed = True
-                        report.log_findings(block.input)
-                        print(f"\n[hunt] Hunt complete.\n\n{block.input.get('summary', '')}\n")
+                        report.log_findings(payload)
+                        print(f"\n[hunt] Hunt complete.\n\n{payload.get('summary', '')}\n")
                     finished = True
                     tool_results.append(
                         {"type": "tool_result", "tool_use_id": block.id, "content": "Hunt ended."}
