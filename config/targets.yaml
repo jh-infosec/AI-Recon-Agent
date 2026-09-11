@@ -1,0 +1,30 @@
+# =============================================================================
+# AUTHORIZED TARGETS ALLOWLIST
+# =============================================================================
+# This file is your explicit, written self-attestation of authorization.
+# The agent refuses to run any tool against a host that is NOT listed here.
+#
+# Only add hosts you are personally, currently authorized to test:
+#   - Hack The Box machines you have spawned on YOUR OWN HTB VPN connection
+#   - TryHackMe rooms you have deployed on YOUR OWN THM VPN connection
+#   - VMs in your own local/offline home lab that you own or built
+#
+# Do NOT add:
+#   - Anything you don't own, didn't spawn yourself, or aren't currently
+#     authorized to test (this includes other students' boxes, shared
+#     infra, or anything on someone else's network)
+#
+# HTB/THM machines are ephemeral - their IP changes every time you spawn a
+# new instance. Update this file each session. Stale entries are a hazard,
+# not a convenience: remove a target as soon as you stop the machine.
+#
+# platform must be one of: htb | thm | homelab
+# =============================================================================
+
+authorized_targets: []
+
+# Example (uncomment and edit for your own session):
+# authorized_targets:
+#   - host: 10.10.11.123
+#     platform: htb
+#     note: "HTB machine 'Example' - spawned on my own VPN, 2026-08-13"

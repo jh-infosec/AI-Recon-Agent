@@ -564,8 +564,17 @@ class HuntReport:
             summary.get("findings") or [],
             key=lambda f: _SEV_ORDER.get(str(f.get("severity", "info")).lower(), 5),
         )
+        body = (summary.get("summary") or "").strip()
+        findings_present = bool(findings or summary.get("iocs") or summary.get("next_steps"))
+        if not body and not findings_present:
+            # Defensive: an empty payload should have been rejected upstream by
+            # completeness.validate_hunt. Writing a bare "## Hunt summary"
+            # heading with nothing under it is how v0.4.2 produced a report that
+            # looked finished and was not.
+            return
+
         with open(self.path, "a", encoding="utf-8") as f:
-            f.write("## Hunt summary\n\n" + (summary.get("summary") or "").strip() + "\n\n")
+            f.write("## Hunt summary\n\n" + (body or "_(no narrative supplied)_") + "\n\n")
             if findings:
                 f.write("### Findings\n\n")
                 f.write("| Severity | Finding | MITRE ATT&CK | Recommendation |\n")

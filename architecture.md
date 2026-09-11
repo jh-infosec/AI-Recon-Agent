@@ -173,6 +173,12 @@ lowercase substrings matched against tool output.
 Log signal to ATT&CK technique, with the investigative next step. The
 defensive counterpart to `knowledge.py`.
 
+### completeness.py
+
+Validates what a finish tool was called with. Deterministic, for the same
+reason the coverage gate is: a model asked whether it really finished is being
+asked by the faculty that just said yes.
+
 ### parsers.py
 
 Turns raw tool output into structured objects: nmap XML, ffuf JSON, whatweb
@@ -262,6 +268,23 @@ The five defects previously listed here as *open defect* were cleared in
 v0.3.1 and have moved to "Cleared Defects" at the end of this section, where
 they are kept as a record of what the code once did and what test now holds
 it. What remains below is limitation rather than defect.
+
+### Calling the finish tool is not producing a conclusion
+
+The finish payload is validated before completion is recorded: an empty
+summary or an empty findings list is rejected, the model is told which, and
+asked again. Only a usable payload sets `completed`.
+
+This was found the run after the truncation fix, and is the same failure one
+step later: v0.4.2 made the loop reach `finish_hunt`, and the model then
+called it with nothing in it, having written a genuinely good timeline as
+prose in the conversation instead. The exit code said success.
+
+Each layer of this check exists because the previous one turned out to be a
+proxy. "Did the loop finish" stood in for "did the model call the tool", which
+stood in for "did the model produce output". Only the last one is the thing
+anybody cares about, and it is the only one that can be checked by looking at
+what is actually there.
 
 ### Truncation is recoverable, incompleteness is reported
 

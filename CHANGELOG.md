@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.3] - 2026-09-11
+
+Found by the next live run after v0.4.2. The hunt reached `finish_hunt`, printed "Hunt complete" and exited 0 — and the report still had no findings. The model had written its entire timeline as prose in the conversation and called the finish tool with an empty payload; `completed = True` was set on the strength of the call alone.
+
+Fixed: `completeness.py` validates finish payloads — an empty summary, a missing findings list, or untitled findings are rejected, and the model is handed the specific reason and asked to call again (bounded by `MAX_FINISH_RETRIES`). The retry message states plainly that conversation prose is not saved, since the observed failure was good analysis in the wrong place. If it still fails, the session is marked incomplete and exits 3 rather than reporting success. Both system prompts and both finish-tool descriptions now say the payload is the report. `log_findings` no longer writes a bare heading for an empty payload.
+
+Tests: 17 new (193 total). The v0.4.2 artifact — a `## Hunt summary` heading followed by blank lines — is reproduced and asserted against.
+
 ## [0.4.2] - 2026-09-11
 
 Found by running the hunt agent against real logs for the first time. A detailed analysis turn hit the 2048-token ceiling and was cut off mid-word, so `stop_reason` was `max_tokens` rather than `tool_use`, and the loop treated a truncated sentence as a decision to stop — ending before `finish_hunt` was ever called. The report looked ordinary and silently contained no findings, no IOCs and no next steps.
