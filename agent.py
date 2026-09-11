@@ -40,6 +40,7 @@ import sys
 import anthropic
 
 import completeness
+import console
 import parsers
 from apiclient import call_with_retry, explain
 from knowledge import format_for_prompt
@@ -320,8 +321,9 @@ def main():
     surface = AttackSurface()
     telemetry = Telemetry(MODEL)
 
-    print(f"[agent] v{__version__} - target {args.target} authorized ({meta['platform']}). Starting...")
-    print(f"[agent] Reports: {report.path}  |  {report.html_path}")
+    print(console.agent("agent", f"v{__version__} - target {console.c(args.target, console.BOLD)} "
+                        f"authorized ({meta['platform']}). Starting..."))
+    print(console.agent("agent", f"Reports: {console.c(str(report.path), console.GREY)}"))
 
     messages = [
         {
@@ -365,7 +367,7 @@ def main():
 
         for block in response.content:
             if block.type == "text" and block.text.strip():
-                print(f"\n[claude] {block.text.strip()}\n")
+                print(f"\n{console.c('[claude]', console.BLUE, console.BOLD)} {block.text.strip()}\n")
                 report.log_analysis(block.text)
                 assistant_content.append({"type": "text", "text": block.text})
 
@@ -413,7 +415,7 @@ def main():
                     )
                     continue
 
-                print(f"[tool] {block.name}({json.dumps(block.input)})")
+                print(console.tool_call(block.name, f"({json.dumps(block.input)})"))
                 try:
                     result = dispatch_tool(block.name, block.input, args.target)
                 except Exception as e:  # noqa: BLE001
@@ -424,6 +426,16 @@ def main():
                         "stderr": str(e),
                         "timed_out": False,
                     }
+
+                # Show the exact invocation, then whatever it actually found.
+                if result.get("command") and result["command"] != "n/a":
+                    print(console.command(result["command"]))
+                if result.get("timed_out"):
+                    print(console.warn("timed out"))
+                for line in console.highlights(block.name, result.get("parsed")):
+                    print(console.finding(line))
+                if result.get("stderr") and not result.get("stdout"):
+                    print(console.bad(result["stderr"].splitlines()[0][:160]))
 
                 report.log_tool_call(block.name, block.input, result)
                 surface.ingest(block.name, block.input, result.get("parsed"))
@@ -505,17 +517,23 @@ def main():
     report.log_telemetry(telemetry.summary())
     report.finalize_note()
 
-    print(f"\n[agent] Coverage: {summary['satisfied']}/{summary['total']} checks satisfied.")
-    for c in checks:
-        print(f"  [{'x' if c.satisfied else ' '}] {c.name} - {c.detail}")
+    cov_colour = console.GREEN if summary["complete"] else console.YELLOW
+    print("\n" + console.agent("agent", console.c(
+        f"Coverage: {summary['satisfied']}/{summary['total']} checks satisfied.",
+        cov_colour, console.BOLD)))
+    for chk in checks:
+        print(console.check(chk.satisfied, chk.name, chk.detail))
 
     t = telemetry.summary()
-    print(
-        f"\n[agent] {t['turns']} turns, {t['input_tokens']} in / {t['output_tokens']} out "
-        f"tokens, estimated ${t['estimated_cost_usd']:.4f} "
-        f"(estimate - verify at https://www.anthropic.com/pricing)"
-    )
-    print(f"\n[agent] Done. Reports:\n  {report.path}\n  {report.html_path}")
+    cost = console.c(f"${t['estimated_cost_usd']:.4f}", console.BOLD)
+    print("\n" + console.agent("agent", (
+        f"{t['turns']} turns, {t['input_tokens']:,} in / {t['output_tokens']:,} out "
+        f"tokens, estimated {cost}"
+    )))
+    print(console.note("cost is an estimate - verify at https://www.anthropic.com/pricing"))
+    print("\n" + console.agent("agent", "Done. Reports:"))
+    print(console.note(str(report.path)))
+    print(console.note(str(report.html_path)))
 
     if not completed:
         print(

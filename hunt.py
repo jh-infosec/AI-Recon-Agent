@@ -37,6 +37,7 @@ import sys
 import anthropic
 
 import completeness
+import console
 from apiclient import call_with_retry, explain
 from detections import format_for_prompt
 from report import HuntReport
@@ -260,9 +261,12 @@ def main():
     client = anthropic.Anthropic(api_key=api_key)
     report = HuntReport(args.logs)
 
-    print(f"[hunt] v{__version__} - workspace '{args.logs}' (read-only). Starting...")
-    print(f"[hunt] Sources:\n{probe['stdout']}")
-    print(f"[hunt] Reports: {report.path}  |  {report.html_path}")
+    print(console.agent("hunt", f"v{__version__} - workspace "
+                        f"{console.c(args.logs, console.BOLD)} (read-only). Starting..."))
+    print(console.agent("hunt", "Sources:"))
+    for line in (probe["stdout"] or "").splitlines():
+        print(console.note(line))
+    print(console.agent("hunt", f"Reports: {console.c(str(report.path), console.GREY)}"))
 
     kickoff = "Begin the hunt. Start by listing the available log sources, then triage them."
     if args.focus:
@@ -304,7 +308,7 @@ def main():
 
         for block in response.content:
             if block.type == "text" and block.text.strip():
-                print(f"\n[claude] {block.text.strip()}\n")
+                print(f"\n{console.c('[claude]', console.BLUE, console.BOLD)} {block.text.strip()}\n")
                 report.log_analysis(block.text)
                 assistant_content.append({"type": "text", "text": block.text})
 
@@ -323,7 +327,8 @@ def main():
                     ok, reason = completeness.validate_hunt(payload)
                     if not ok and finish_retries < MAX_FINISH_RETRIES:
                         finish_retries += 1
-                        print(f"[hunt] finish_hunt rejected ({reason}); asking again.")
+                        print(console.agent("hunt", console.c(
+                            f"finish_hunt rejected ({reason}); asking again.", console.YELLOW)))
                         tool_results.append(
                             {
                                 "type": "tool_result",
@@ -340,14 +345,23 @@ def main():
                     else:
                         completed = True
                         report.log_findings(payload)
-                        print(f"\n[hunt] Hunt complete.\n\n{payload.get('summary', '')}\n")
+                        print("\n" + console.agent("hunt", console.c(
+                            "Hunt complete.", console.GREEN, console.BOLD)))
+                        for f in payload.get("findings", []):
+                            sev = (f.get("severity") or "info").lower()
+                            line = f"[{sev}] {f.get('title', '')}"
+                            print(console.bad(line) if sev in ("critical", "high")
+                                  else console.finding(line))
+                        print()
+                        print(payload.get("summary", ""))
+                        print()
                     finished = True
                     tool_results.append(
                         {"type": "tool_result", "tool_use_id": block.id, "content": "Hunt ended."}
                     )
                     continue
 
-                print(f"[tool] {block.name}({json.dumps(block.input)})")
+                print(console.tool_call(block.name, f"({json.dumps(block.input)})"))
                 try:
                     result = dispatch_tool(block.name, block.input, args.logs)
                 except Exception as e:  # noqa: BLE001
@@ -355,6 +369,12 @@ def main():
                         "command": "n/a", "returncode": None, "stdout": "",
                         "stderr": str(e), "timed_out": False,
                     }
+
+                if result.get("command") and result["command"] != "n/a":
+                    print(console.command(result["command"]))
+                if result.get("stderr"):
+                    first = result["stderr"].splitlines()[0][:160]
+                    print(console.warn(first) if result.get("stdout") else console.bad(first))
 
                 report.log_tool_call(block.name, block.input, result)
                 tool_results.append(
@@ -407,7 +427,9 @@ def main():
         report.log_incomplete(reason)
 
     report.finalize_note()
-    print(f"\n[hunt] Done. Reports:\n  {report.path}\n  {report.html_path}")
+    print("\n" + console.agent("hunt", "Done. Reports:"))
+    print(console.note(str(report.path)))
+    print(console.note(str(report.html_path)))
 
     if not completed:
         print(

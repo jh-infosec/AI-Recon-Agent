@@ -240,6 +240,24 @@ without the retry wrapper purely because only `agent.py` was remembered.
 A recon session is a chain of dependent turns, so one transient error costs
 the whole session rather than one call - that asymmetry is why this exists.
 
+### console.py
+
+Terminal output: colour, the exact command that ran, and extracted findings.
+
+The command matters because reproducing a run by hand is the point of a study
+tool, and the full invocation - flags, wordlist path, matched status codes -
+is what makes that possible. It was already being recorded for the report and
+simply was not shown.
+
+Colour is off unless it will work: NO_COLOR, FORCE_COLOR, a dumb TERM and
+whether stdout is a terminal, in that order. The symbols carry the meaning
+without it.
+
+`highlights()` reports what a tool found and never what it might mean. A `[+]`
+on an interpretation would be the console asserting something no tool
+established, which is the same line `report.py` holds between observation and
+analysis.
+
 ### report.py
 
 `SessionReport` and `HuntReport`, both rendering Markdown and self-contained
