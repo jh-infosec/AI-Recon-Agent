@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.0] - 2026-09-11
+
+Both features come from comparing a live RootMe run against the box's actual path: the agent found `/panel`, correctly guessed it was an upload area, and could neither enumerate inside it nor read it.
+
+Added: **Subpath fuzzing.** `run_gobuster` and `run_ffuf` take a `path`, so `/panel` fuzzes `/panel/FUZZ`. Previously both always started at the web root — the model tried to enumerate inside a discovered directory, got the root scan back, and said so. **`fetch_page`.** A read-only GET that returns status, useful headers, page title, HTML comments, form actions and field names, links and scripts. This turns "probably an upload form at /panel" into "POST upload.php, multipart/form-data, field fileToUpload", and is also how `robots.txt` gets read.
+
+Containment, since `fetch_page` is the first tool pulling a full target-controlled document into the model's context: paths are validated so they cannot become absolute URLs or network-relative references, redirects are followed only back to the authorized host (a target pointing the agent at a link-local metadata endpoint is refused), and the parsed result is handed to the model wrapped in a warning that the content is evidence and never instruction. Argument validation now runs before any other work in the fuzzers — previously a missing wordlist short-circuited the path check.
+
+Tests: 36 new (285 total), including a live local HTTP server for the fetch path.
+
 ## [0.4.9] - 2026-09-11
 
 Documentation only. The README had drifted from the code: it still claimed the test suite "concentrates on safety.py" (it now spans eight files and both boundaries), still listed `config/targets.yaml` in the project layout although that file is gitignored and no longer ships, and omitted `console.py` and `completeness.py`. Setup now includes copying the allowlist template on first run, and notes that gitignore only applies to files git is not already tracking — which is why a committed `targets.yaml` stayed committed.

@@ -225,6 +225,24 @@ def highlights(tool_name: str, parsed: dict) -> list:
             if values:
                 out.append(f"{plugin}: {', '.join(values)[:80]}")
 
+    elif tool_name == "fetch_page":
+        if parsed.get("title"):
+            out.append(f"title: {parsed['title']}")
+        for k, v in (parsed.get("headers") or {}).items():
+            if k.lower() in ("server", "x-powered-by", "www-authenticate", "location"):
+                out.append(f"{k}: {v[:80]}")
+        for f in parsed.get("forms", []):
+            fields = ", ".join(x["name"] for x in f.get("fields", []))
+            enc = f" ({f['enctype']})" if f.get("enctype") else ""
+            out.append(
+                f"form: {f.get('method', 'get').upper()} {f.get('action') or '(self)'}"
+                f"{enc}" + (f" [{fields}]" if fields else "")
+            )
+        for c_ in parsed.get("comments", [])[:5]:
+            out.append(f"comment: {c_[:100]}")
+        if parsed.get("generator"):
+            out.append(f"generator: {parsed['generator']}")
+
     elif tool_name == "run_dns_enum":
         if parsed.get("axfr_succeeded"):
             out.append("zone transfer (AXFR) succeeded")

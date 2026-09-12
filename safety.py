@@ -216,6 +216,46 @@ def validate_search_term(term: str) -> str:
     return text
 
 
+def validate_url_path(path: str) -> str:
+    """
+    Validate a model-supplied URL path, returning it normalised with a leading
+    slash. Empty means the web root.
+
+    The constraint that matters is that a path must stay a PATH. If a value
+    like `//evil.example/x` or `http://evil.example/` reached URL
+    construction, the request would leave the authorized host entirely - the
+    same shape of bug as the v0.3.2 port injection, where an unvalidated
+    argument turned `http://<target>:<port>` into a URL pointing somewhere
+    else. The allowlist answers "may this tool talk to this host"; it cannot
+    answer that if another argument gets to change which host that is.
+
+    Traversal (`..`) is refused too. It has no legitimate use here - the model
+    can ask for `/a/b` directly - and a path that resolves upward is a sign
+    the model is confused about where it is rather than a technique worth
+    supporting.
+    """
+    raw = (path or "").strip()
+    if not raw:
+        return "/"
+
+    if "://" in raw or raw.startswith("//"):
+        raise NotAuthorizedError(
+            f"Path '{path}' looks like a URL or a network-relative reference. "
+            f"Pass a path only, e.g. '/panel' - the host comes from the allowlist."
+        )
+    if any(ch in raw for ch in ("\n", "\r", "\t", " ", "\\")):
+        raise NotAuthorizedError(f"Path '{path}' contains whitespace or a backslash.")
+    if ".." in raw:
+        raise NotAuthorizedError(
+            f"Path '{path}' contains '..'. Ask for the target path directly."
+        )
+    if not raw.startswith("/"):
+        raw = "/" + raw
+    if len(raw) > 512:
+        raise NotAuthorizedError("Path is unreasonably long (>512 chars).")
+    return raw
+
+
 def validate_extensions(extensions: str) -> str:
     """Validate an ffuf extension list like '.php,.txt,.bak'. Empty is allowed."""
     ext = (extensions or "").strip()

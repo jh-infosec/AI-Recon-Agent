@@ -78,7 +78,16 @@ included, so the payload would have truncated and dropped ports anyway - the
 same silent loss, at a different size. `parsers.compact_for_model` degrades
 detail progressively and never drops a port; see its docstring.
 
-## v0.5.0 - state across runs
+## v0.5.0 - one layer deeper (shipped)
+
+- [x] Subpath fuzzing: `path` on `run_gobuster` and `run_ffuf`.
+- [x] `fetch_page`: read page source, comments, forms, links, robots.txt.
+
+Both were found by comparing a live run against the box's real attack path,
+not by planning. They took the release slot originally held by state across
+runs, which moves to v0.6.0.
+
+## v0.6.0 - state across runs
 
 - `state/<target>.json` carrying discovered surface and tool calls made.
 - Kickoff summarises prior state instead of starting cold.
