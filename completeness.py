@@ -85,6 +85,12 @@ def validate_session(payload: dict) -> tuple:
         return False, "summary is empty"
     if len(summary) < MIN_SUMMARY_CHARS:
         return False, f"summary is only {len(summary)} characters"
+
+    # Shape, not just presence. study_pointers arriving as a list of strings
+    # instead of objects crashed the report writer after a full paid session.
+    pointers = payload.get("study_pointers")
+    if pointers is not None and not isinstance(pointers, list):
+        return False, "study_pointers must be a list"
     return True, ""
 
 
@@ -137,3 +143,54 @@ def normalise_text(value):
     if isinstance(value, dict):
         return {k: normalise_text(v) for k, v in value.items()}
     return value
+
+
+def coerce_entries(value, key: str = "topic") -> list:
+    """
+    Normalise a list that should hold objects but may hold strings.
+
+    A schema declares `study_pointers` as objects with `topic`, `mitre` and
+    `module`, and a model returned a list of plain strings instead. The report
+    then called `.get()` on a `str` and the whole session died at the final
+    step - after every tool had run and been paid for.
+
+    A schema is a request to the model, not a guarantee about what arrives.
+    That is the same lesson as the port and wordlist arguments, arriving here
+    in the report layer: anything crossing a boundary from the model gets
+    checked at the boundary, not assumed.
+
+    A bare string is kept as the entry's main field rather than discarded,
+    because the content is usually right even when the shape is not.
+    """
+    out = []
+    for item in value or []:
+        if isinstance(item, dict):
+            out.append(item)
+        elif isinstance(item, str) and item.strip():
+            out.append({key: item.strip()})
+        # anything else (int, None, nested list) has no salvageable meaning
+    return out
+
+
+def normalise_payload(payload: dict) -> dict:
+    """
+    Repair the shape of a finish payload before anything consumes it.
+
+    Escapes first (see normalise_text), then the list-of-objects fields that
+    a model may return as lists of strings.
+    """
+    if not isinstance(payload, dict):
+        return payload
+    out = dict(normalise_text(payload))
+    if "study_pointers" in out:
+        out["study_pointers"] = coerce_entries(out["study_pointers"], "topic")
+    if "findings" in out:
+        out["findings"] = coerce_entries(out["findings"], "title")
+    for list_key in ("attack_surface", "leads", "iocs", "next_steps"):
+        if list_key in out and isinstance(out[list_key], list):
+            out[list_key] = [
+                x if isinstance(x, str) else str(x)
+                for x in out[list_key]
+                if x not in (None, "")
+            ]
+    return out

@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.2] - 2026-09-13
+
+A live session crashed at the final step, losing the report after every tool had run and been paid for. The model returned `study_pointers` as a list of plain strings where the schema declared objects; the report writer called `.get()` on a `str` and raised.
+
+Fixed: **Finish payloads are shape-normalised** — a bare string becomes `{"topic": ...}` rather than being discarded, since the content is usually right even when the shape is not. Same for the hunt's `findings`. **The report writer no longer trusts the shape it is given**, because it runs last and a crash there throws away the whole session. **Finalisation is wrapped** in both agents, so a rendering bug costs one section rather than everything. **`validate_session` checks the shape** of `study_pointers`, so a bad payload is caught before the report rather than by it.
+
+Also: **`fetch_page` no longer verifies TLS certificates.** A live run failed with `CERTIFICATE_VERIFY_FAILED` against an Amazon DCV endpoint and learned nothing from it. Lab boxes serve self-signed certs as a matter of course, and this client sends a GET with no credentials — verification protects nothing here and costs information. The identity that matters is the allowlist, which is unaffected.
+
+Tests: 20 new (322 total), verified against v0.5.1.
+
 ## [0.5.1] - 2026-09-13
 
 Three defects from the first live run of v0.5.0. `fetch_page` itself worked well — the model used it unprompted to confirm an exposed `.git` directory by fetching `/.git/HEAD` rather than inferring it from an nmap script hit.

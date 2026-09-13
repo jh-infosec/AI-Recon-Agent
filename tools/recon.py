@@ -24,6 +24,7 @@ and both still pass through the same assert_authorized() gate.
 
 import shlex
 import shutil
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -454,7 +455,21 @@ def fetch_page(target: str, port: int = 80, https: bool = False, path: str = "/"
     scheme = "https" if https else "http"
     url = f"{scheme}://{target}:{port}{path}"
 
-    opener = urllib.request.build_opener(_SameHostRedirect(target))
+    # Certificate verification is deliberately off. Lab boxes serve self-signed
+    # certificates as a matter of course - a live run failed on
+    # CERTIFICATE_VERIFY_FAILED against an Amazon DCV endpoint and learned
+    # nothing about the target from it. Verification protects a client that
+    # sends something worth intercepting; this one sends a GET and no
+    # credentials, so refusing to look costs information and protects nothing.
+    # The identity that matters here is the ALLOWLIST, which is enforced
+    # separately and is not weakened by this.
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+
+    opener = urllib.request.build_opener(
+        _SameHostRedirect(target), urllib.request.HTTPSHandler(context=ctx)
+    )
     opener.addheaders = [("User-Agent", "ai-recon-agent (study tool)")]
 
     try:

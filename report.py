@@ -49,6 +49,20 @@ def _fence(text: str) -> str:
     return "`" * max(3, longest + 1)
 
 
+def _as_entry(item, key: str = "topic") -> dict:
+    """
+    Coerce a list item to a dict for rendering.
+
+    `completeness.normalise_payload` should have done this already, but the
+    report is the last thing to run in a session and the most expensive thing
+    to lose: a crash here throws away every tool result already paid for. So
+    it tolerates the shape rather than trusting it.
+    """
+    if isinstance(item, dict):
+        return item
+    return {key: str(item)}
+
+
 class SessionReport:
     def __init__(self, target: str, platform: str, note: str):
         REPORTS_DIR.mkdir(exist_ok=True)
@@ -174,7 +188,8 @@ class SessionReport:
                 f.write("### Study pointers\n\n")
                 f.write("| Topic | MITRE ATT&CK | HTB Academy | CVE |\n")
                 f.write("|---|---|---|---|\n")
-                for p in pointers:
+                for raw in pointers:
+                    p = _as_entry(raw, "topic")
                     f.write(
                         f"| {p.get('topic', '')} | {p.get('mitre', '')} "
                         f"| {p.get('module', '')} | {p.get('cve', '')} |\n"
@@ -355,7 +370,8 @@ class SessionReport:
                     "<table><thead><tr><th>Topic</th><th>MITRE ATT&amp;CK</th>"
                     "<th>HTB Academy</th><th>CVE</th></tr></thead><tbody>"
                 )
-                for p in pointers:
+                for raw in pointers:
+                    p = _as_entry(raw, "topic")
                     parts.append(
                         "<tr>"
                         f"<td>{e(str(p.get('topic', '')))}</td>"
@@ -571,7 +587,7 @@ class HuntReport:
         self._summary = summary
 
         findings = sorted(
-            summary.get("findings") or [],
+            (_as_entry(f, "title") for f in (summary.get("findings") or [])),
             key=lambda f: _SEV_ORDER.get(str(f.get("severity", "info")).lower(), 5),
         )
         body = (summary.get("summary") or "").strip()
@@ -692,7 +708,7 @@ class HuntReport:
         if self._summary:
             s = self._summary
             findings = sorted(
-                s.get("findings") or [],
+                (_as_entry(f, "title") for f in (s.get("findings") or [])),
                 key=lambda f: _SEV_ORDER.get(str(f.get("severity", "info")).lower(), 5),
             )
             parts.append("<section class='summary'><h2>Hunt summary</h2>")
