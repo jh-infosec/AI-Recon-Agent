@@ -82,6 +82,23 @@ Every source is resolved through symlinks and confirmed to sit inside the
 `--logs` workspace. This is the defensive analogue of the target allowlist and
 it fails closed the same way.
 
+### Fetched pages are evidence, never instruction
+
+`fetch_page` is the first tool that pulls a full target-controlled document
+into the model's context, and that context drives what runs next. A page can
+contain text shaped like directions to whatever reads it.
+
+Three things hold the line. The payload is labelled as untrusted target
+content in the prompt. Paths and redirects are validated so the request cannot
+leave the authorized host - a redirect is a request to talk to a different
+host, so it is re-checked rather than followed. And the model has no tool that
+acts on a target, so the worst a successful injection achieves is a wasted
+scan and a wrong sentence in a report.
+
+The first two are mitigations. The third is the reason the first two do not
+have to be perfect, and it is the strongest argument for the no-exploitation
+rule below being a structural property rather than a limitation.
+
 ### No exploitation, by absence rather than by instruction
 
 There is no tool that fires an exploit, generates a payload or writes to a

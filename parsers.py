@@ -527,3 +527,91 @@ def render_html(tool_name: str, parsed: dict) -> str:
         return out
 
     return ""
+
+
+# --------------------------------------------------------------------------- #
+# HTML
+# --------------------------------------------------------------------------- #
+_RE_TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
+_RE_COMMENT = re.compile(r"<!--(.*?)-->", re.DOTALL)
+_RE_FORM = re.compile(r"<form\b(.*?)>(.*?)</form>", re.IGNORECASE | re.DOTALL)
+_RE_ATTR = re.compile(r"""(\w[\w:-]*)\s*=\s*["']([^"']*)["']""")
+_RE_INPUT = re.compile(r"<input\b([^>]*)>", re.IGNORECASE)
+_RE_LINK = re.compile(r"""<a\b[^>]*href\s*=\s*["']([^"']+)["']""", re.IGNORECASE)
+_RE_SCRIPT_SRC = re.compile(r"""<script\b[^>]*src\s*=\s*["']([^"']+)["']""", re.IGNORECASE)
+_RE_GENERATOR = re.compile(
+    r"""<meta\b[^>]*name\s*=\s*["']generator["'][^>]*content\s*=\s*["']([^"']*)["']""",
+    re.IGNORECASE,
+)
+
+
+def parse_html(html: str) -> dict:
+    """
+    Pull out of a page the things a human reads page source FOR.
+
+    Comments, form actions and input names, links, script sources, and the
+    generator meta tag. On a box like RootMe this is the difference between
+    "there is probably an upload form at /panel" - inferred from a directory
+    name - and "confirmed: /panel posts multipart/form-data to upload.php with
+    a field called 'fileToUpload'".
+
+    Regex rather than an HTML parser, deliberately: the stdlib alternative
+    chokes on malformed markup, and target pages are frequently malformed.
+    This does not need a correct DOM, only the attributes, and it must never
+    raise on garbage input.
+    """
+    out = {
+        "title": None,
+        "comments": [],
+        "forms": [],
+        "links": [],
+        "scripts": [],
+        "generator": None,
+    }
+    if not html:
+        return out
+
+    if m := _RE_TITLE.search(html):
+        out["title"] = re.sub(r"\s+", " ", m.group(1)).strip()[:200]
+    if m := _RE_GENERATOR.search(html):
+        out["generator"] = m.group(1).strip()[:120]
+
+    for c in _RE_COMMENT.findall(html):
+        text = re.sub(r"\s+", " ", c).strip()
+        # Conditional comments and licence blocks are boilerplate; a developer
+        # note or a stray credential is not.
+        if text and not text.lower().startswith(("[if", "[endif")):
+            out["comments"].append(text[:300])
+
+    for attrs, body in _RE_FORM.findall(html):
+        a = dict(_RE_ATTR.findall(attrs))
+        fields = []
+        for raw in _RE_INPUT.findall(body):
+            ia = dict(_RE_ATTR.findall(raw))
+            name = ia.get("name") or ia.get("id")
+            if name:
+                fields.append({"name": name, "type": ia.get("type", "text")})
+        out["forms"].append(
+            {
+                "action": a.get("action", ""),
+                "method": (a.get("method") or "get").lower(),
+                "enctype": a.get("enctype", ""),
+                "fields": fields,
+            }
+        )
+
+    seen = set()
+    for href in _RE_LINK.findall(html):
+        h = href.strip()
+        if h and not h.startswith(("#", "javascript:", "mailto:")) and h not in seen:
+            seen.add(h)
+            out["links"].append(h[:200])
+
+    out["scripts"] = list(dict.fromkeys(s.strip()[:200] for s in _RE_SCRIPT_SRC.findall(html)))
+
+    # Cap everything; a page can be enormous and the report keeps the raw body.
+    out["comments"] = out["comments"][:30]
+    out["links"] = out["links"][:60]
+    out["scripts"] = out["scripts"][:30]
+    out["forms"] = out["forms"][:15]
+    return out

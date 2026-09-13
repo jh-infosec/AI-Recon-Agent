@@ -27,6 +27,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -39,9 +42,11 @@ from safety import (
     validate_host_format,
     validate_ports,
     validate_search_term,
+    validate_url_path,
     validate_web_port,
 )
 
+MAX_OUTPUT_CHARS = 20000
 DEFAULT_TIMEOUT = 300  # seconds
 DEFAULT_WORDLIST = "/usr/share/wordlists/dirb/common.txt"
 # Common on Kali/Parrot via the seclists package - used for vhost/subdomain fuzzing.
@@ -162,10 +167,27 @@ def run_gobuster(
     port: int = 80,
     https: bool = False,
     wordlist: str = DEFAULT_WORDLIST,
+    path: str = "/",
 ) -> dict:
-    """Directory/file enumeration against a web service."""
+    """
+    Directory/file enumeration against a web service.
+
+    `path` sets the base to fuzz under, so a discovered directory can be
+    enumerated in turn: `/panel` fuzzes `/panel/FUZZ`. Until v0.5.0 both
+    fuzzers always started at the web root, and on a live RootMe run the model
+    found `/panel`, tried to enumerate inside it, and got the root scan back
+    again - it noticed and said so, which is how this gap was found.
+    """
+    # Every argument is validated before any work happens. Path validation is
+    # a containment control - it is what stops a path argument moving the
+    # request to another host - and running it after a usability check like
+    # "does the wordlist exist" means a missing wordlist short-circuits the
+    # containment check entirely. Harmless here, since nothing runs either
+    # way, but the wrong order to establish.
     assert_authorized(target)
     port = validate_web_port(port)
+    base = validate_url_path(path).rstrip("/")
+
     try:
         wl = resolve_wordlist(wordlist)
     except NotAuthorizedError as e:
@@ -173,7 +195,7 @@ def run_gobuster(
 
     binary = _require_binary("gobuster", "gobuster")
     scheme = "https" if https else "http"
-    url = f"{scheme}://{target}:{port}"
+    url = f"{scheme}://{target}:{port}{base}"
     cmd = [binary, "dir", "-u", url, "-w", str(wl), "-q", "-t", "20"]
 
     result = _run(cmd, timeout=300)
@@ -189,6 +211,7 @@ def run_ffuf(
     wordlist: str = "",
     extensions: str = "",
     domain: str = "",
+    path: str = "/",
 ) -> dict:
     """
     ffuf fuzzer - faster than gobuster and, importantly, does two jobs:
@@ -207,6 +230,7 @@ def run_ffuf(
     """
     assert_authorized(target)
     port = validate_web_port(port)
+    validate_url_path(path)   # refused even in vhost mode, where it is unused
     scheme = "https" if https else "http"
 
     # Validate arguments BEFORE requiring the binary, so a usage mistake
@@ -255,13 +279,15 @@ def run_ffuf(
 
     # --- dir mode (default) ---
     extensions = validate_extensions(extensions)
+    base = validate_url_path(path).rstrip("/")
+
     try:
         wl = resolve_wordlist(wordlist or DEFAULT_WORDLIST)
     except NotAuthorizedError as e:
         return _refused_wordlist_result("ffuf (dir)", e)
 
     binary = _require_binary("ffuf", "ffuf")
-    url = f"{scheme}://{target}:{port}/FUZZ"
+    url = f"{scheme}://{target}:{port}{base}/FUZZ"
     with tempfile.TemporaryDirectory() as td:
         outfile = Path(td) / "ffuf.json"
         cmd = [
@@ -365,3 +391,110 @@ def searchsploit_lookup(query: str) -> dict:
     # hyphen check in validate_search_term is what keeps this a search.
     cmd = [binary, term]
     return _run(cmd, timeout=60)
+
+
+# --------------------------------------------------------------------------- #
+# page fetch
+# --------------------------------------------------------------------------- #
+MAX_PAGE_BYTES = 400_000
+
+
+class _SameHostRedirect(urllib.request.HTTPRedirectHandler):
+    """
+    Allow redirects only back to the authorized host.
+
+    A target controls its own redirects. Following one blindly would let a box
+    send the agent to any address it likes - including something on the local
+    network that is emphatically not in the allowlist. The gate answers "may
+    this tool talk to this host", and a redirect is a request to talk to a
+    different one, so it has to be re-checked rather than followed.
+    """
+
+    def __init__(self, allowed_host: str):
+        self.allowed_host = allowed_host
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        host = urllib.parse.urlparse(newurl).hostname
+        if host and host != self.allowed_host:
+            raise urllib.error.HTTPError(
+                newurl, code,
+                f"refused redirect to '{host}', which is not the authorized target",
+                headers, fp,
+            )
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def fetch_page(target: str, port: int = 80, https: bool = False, path: str = "/") -> dict:
+    """
+    Fetch one page and report what is in it: status, useful headers, page
+    title, HTML comments, form actions and field names, links and scripts.
+
+    This is the tool that closes the gap between inferring and confirming.
+    A directory listing says `/panel` exists; reading it says `/panel` posts
+    multipart form data to `upload.php` with a field named `fileToUpload`.
+    Reading page source is among the first things a human does and there was
+    no way to do it.
+
+    Read-only: GET only, no cookies, no credentials, no POST. Redirects are
+    followed only back to the authorized host.
+
+    Everything returned here is ATTACKER-CONTROLLED TEXT. A page can contain
+    anything, including text written to look like instructions to whatever
+    reads it. The parsed result is handed to the model wrapped in a warning
+    that says so; see agent.py. That warning is a mitigation and not a
+    guarantee, which is one more reason this project has no tool that acts on
+    a target.
+    """
+    assert_authorized(target)
+    port = validate_web_port(port)
+    path = validate_url_path(path)
+
+    scheme = "https" if https else "http"
+    url = f"{scheme}://{target}:{port}{path}"
+
+    opener = urllib.request.build_opener(_SameHostRedirect(target))
+    opener.addheaders = [("User-Agent", "ai-recon-agent (study tool)")]
+
+    try:
+        with opener.open(url, timeout=30) as resp:
+            raw = resp.read(MAX_PAGE_BYTES + 1)
+            truncated = len(raw) > MAX_PAGE_BYTES
+            body = raw[:MAX_PAGE_BYTES].decode("utf-8", errors="replace")
+            status = resp.status
+            headers = dict(resp.headers)
+            final_url = resp.geturl()
+    except urllib.error.HTTPError as e:
+        # A 404 or 403 is a result, not a failure - the status is the finding.
+        try:
+            body = e.read(MAX_PAGE_BYTES).decode("utf-8", errors="replace")
+        except Exception:  # noqa: BLE001
+            body = ""
+        status, headers, final_url, truncated = e.code, dict(e.headers or {}), url, False
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        return {
+            "command": f"GET {url}",
+            "returncode": None,
+            "stdout": "",
+            "stderr": f"Could not fetch {url}: {e}",
+            "timed_out": isinstance(e, TimeoutError),
+        }
+
+    parsed = parsers.parse_html(body)
+    parsed["status"] = status
+    parsed["url"] = final_url
+    parsed["truncated"] = truncated
+    # Only headers worth reasoning about; the rest is noise in every prompt.
+    interesting = ("server", "x-powered-by", "location", "content-type",
+                   "set-cookie", "www-authenticate")
+    parsed["headers"] = {
+        k: v[:200] for k, v in headers.items() if k.lower() in interesting
+    }
+
+    return {
+        "command": f"GET {url}",
+        "returncode": status,
+        "stdout": body[:MAX_OUTPUT_CHARS],
+        "stderr": "",
+        "timed_out": False,
+        "parsed": parsed,
+    }
