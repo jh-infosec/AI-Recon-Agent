@@ -42,6 +42,7 @@ import anthropic
 import completeness
 import console
 import parsers
+import repeats
 from apiclient import call_with_retry, explain
 from knowledge import format_for_prompt
 from report import SessionReport
@@ -385,6 +386,7 @@ def main():
     ]
 
     continuations = 0
+    call_log = repeats.CallLog()
     completed = False
     finish_retries = 0
 
@@ -471,6 +473,22 @@ def main():
                     continue
 
                 print(console.tool_call(block.name, f"({json.dumps(block.input)})"))
+
+                # An identical call cannot produce a different answer, and a
+                # confused model will otherwise retry a scan that came back
+                # empty. Refusing is deterministic; a prompt instruction is not.
+                if call_log.is_repeat(block.name, block.input):
+                    result = call_log.refusal(block.name, block.input)
+                    print(console.warn(result["stderr"].split(".")[0] + "."))
+                    report.log_tool_call(block.name, block.input, result)
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps(result),
+                        "is_error": True,
+                    })
+                    continue
+
                 try:
                     result = dispatch_tool(block.name, block.input, args.target)
                 except Exception as e:  # noqa: BLE001
@@ -492,6 +510,7 @@ def main():
                 if result.get("stderr") and not result.get("stdout"):
                     print(console.bad(result["stderr"].splitlines()[0][:160]))
 
+                call_log.record(block.name, block.input, result)
                 report.log_tool_call(block.name, block.input, result)
                 surface.ingest(block.name, block.input, result.get("parsed"))
 

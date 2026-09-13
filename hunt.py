@@ -38,6 +38,7 @@ import anthropic
 
 import completeness
 import console
+import repeats
 from apiclient import call_with_retry, explain
 from detections import format_for_prompt
 from report import HuntReport
@@ -275,6 +276,7 @@ def main():
     messages = [{"role": "user", "content": kickoff}]
 
     continuations = 0
+    call_log = repeats.CallLog()
     completed = False
     finish_retries = 0
 
@@ -367,6 +369,22 @@ def main():
                     continue
 
                 print(console.tool_call(block.name, f"({json.dumps(block.input)})"))
+
+                # An identical call cannot produce a different answer, and a
+                # confused model will otherwise retry a scan that came back
+                # empty. Refusing is deterministic; a prompt instruction is not.
+                if call_log.is_repeat(block.name, block.input):
+                    result = call_log.refusal(block.name, block.input)
+                    print(console.warn(result["stderr"].split(".")[0] + "."))
+                    report.log_tool_call(block.name, block.input, result)
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps(result),
+                        "is_error": True,
+                    })
+                    continue
+
                 try:
                     result = dispatch_tool(block.name, block.input, args.logs)
                 except Exception as e:  # noqa: BLE001
@@ -381,6 +399,7 @@ def main():
                     first = result["stderr"].splitlines()[0][:160]
                     print(console.warn(first) if result.get("stdout") else console.bad(first))
 
+                call_log.record(block.name, block.input, result)
                 report.log_tool_call(block.name, block.input, result)
                 tool_results.append(
                     {

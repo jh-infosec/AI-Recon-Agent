@@ -149,6 +149,23 @@ last of those matters most: the report runs after every tool has been paid
 for, which makes it the most expensive thing in the session to lose to a
 crash.
 
+### An absence must be stated, not implied
+
+A tool that finds nothing has to say so. An empty list arriving as an absence
+is indistinguishable from a broken tool, and a live session responded to three
+empty port scans by running the same scan three times, then escalating to all
+65535 ports and burning the full timeout.
+
+The fix has two halves and needs both. Identical calls are refused outright by
+`repeats.py`, which is deterministic and cannot be reasoned around. And the
+empty result is labelled in the payload, because refusing repeats alone would
+only have moved the loop to a slightly different scan - the model's actual
+difficulty was that it could not tell success-with-nothing from failure.
+
+The general form: anywhere the model has to distinguish "no result" from "no
+answer", say which one it is rather than leaving it to be inferred from a hole
+in the data.
+
 ### The model reasons; it does not decide what is true
 
 Tools produce observations. The model orders them, explains them and decides
