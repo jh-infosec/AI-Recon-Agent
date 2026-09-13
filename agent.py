@@ -506,7 +506,10 @@ def main():
                 if result.get("timed_out"):
                     print(console.warn("timed out"))
                 for line in console.highlights(block.name, result.get("parsed")):
-                    print(console.finding(line))
+                    # A leading '!' marks a note about the result rather than a
+                    # finding in it - an empty or truncated scan, for instance.
+                    print(console.warn(line[1:]) if line.startswith("!")
+                          else console.finding(line))
                 if result.get("stderr") and not result.get("stdout"):
                     print(console.bad(result["stderr"].splitlines()[0][:160]))
 

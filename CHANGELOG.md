@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.5] - 2026-09-13
+
+Measured against a live box rather than guessed at. A single request returns in 195ms, so the server is healthy and fuzzing throughput is latency-bound, not server-bound — but under sustained load the target degrades: 596 words and 0 errors at 1:44, 1786 words and 122 errors at 6:50. A 4614-word list at 5-9 requests/sec needs 8+ minutes. On a lab box over a VPN, a full wordlist sweep will not finish, and partial results are the normal case.
+
+Changed: **Fuzzing concurrency lowered** from 40 (ffuf) and 20 (gobuster) to 10 for both, since more threads made the erroring worse rather than the scan faster. **The partial-scan note now says missing does not mean absent** and explains that wordlists are alphabetical, so a scan cut off early says nothing about paths later in the list — the failure mode where a model reads truncation as evidence of absence. **The empty-scan note names rate limiting** and points at reading the site and requesting implied paths directly, which is what actually worked on that box.
+
+Fixed: **Result notes now reach the console.** In v0.5.4 the model was told a scan found nothing and the operator was not — an empty scan printed no output at all, indistinguishable from a crash.
+
+Tests: 7 new (355 total).
+
 ## [0.5.4] - 2026-09-13
 
 From a live Mr Robot run where directory enumeration produced nothing on a WordPress site whose paths are in the default wordlist.

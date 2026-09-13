@@ -290,6 +290,14 @@ def highlights(tool_name: str, parsed: dict) -> list:
         for name in parsed.get("hostnames", [])[:10]:
             out.append(f"hostname: {name}")
 
+    # A scan that found nothing prints nothing, so the operator sees a bare
+    # tool call and cannot tell it apart from a crash. The model already gets
+    # this note in its payload; showing it here keeps the two in step.
+    note_text = (parsed or {}).get("result")
+    if note_text and not out:
+        first = note_text.split(". ")[0]
+        out.append(f"!{first}.")
+
     if len(out) > MAX_HIGHLIGHTS:
         extra = len(out) - MAX_HIGHLIGHTS
         out = out[:MAX_HIGHLIGHTS] + [f"...and {extra} more (full detail in the report)"]
