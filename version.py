@@ -13,4 +13,4 @@ Keep in step with the `version` field in pyproject.toml; the test suite
 asserts the importers agree with this value.
 """
 
-__version__ = "0.4.7"
+__version__ = "0.4.8"
