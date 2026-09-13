@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.7] - 2026-09-11
+
+Added: Coloured console output (`console.py`). The **exact command** each tool ran is now printed in yellow, prefixed with `$`, so it can be copied straight into a shell and re-run by hand — `recon.py` already recorded it via `shlex.join`, it just was not being shown. **Findings are pulled out of the noise** and marked `[+]` in green: open ports with versions, discovered paths with status codes, whatweb plugins, a successful zone transfer. Coverage checks render `[✓]`/`[✗]`, and the hunt prints its findings by severity.
+
+Colour switches itself off when output is not a terminal, or when `NO_COLOR` is set, or on a dumb terminal — a session piped to a file should not be full of escape sequences. The `[+]`, `$` and `[tool]` markers carry the meaning on their own, so plain text loses decoration and nothing else.
+
+Highlights report only what a tool FOUND, never what it might mean; interpretation stays with the model and the report.
+
+Tests: 19 new (242 total).
+
 ## [0.4.6] - 2026-09-11
 
 Found by the first live offensive run, against a THM Windows box.
