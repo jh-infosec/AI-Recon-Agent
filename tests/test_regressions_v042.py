@@ -129,7 +129,17 @@ def test_agent_exits_incomplete_on_either_failure():
 
 @pytest.mark.parametrize("name", ["agent.py", "hunt.py"])
 def test_finish_tool_sets_completed(name):
+    """
+    The finish branch must record completion. Checked by presence within the
+    branch rather than by character distance - an earlier version of this test
+    asserted `completed = True` fell within 200 characters of the branch
+    opening, which broke the moment v0.4.3 inserted payload validation in
+    between. A test that measures proximity is measuring formatting.
+    """
     src = (Path(__file__).parent.parent / name).read_text(encoding="utf-8")
     finish = "finish_session" if name == "agent.py" else "finish_hunt"
     idx = src.index(f'if block.name == "{finish}":')
-    assert "completed = True" in src[idx:idx + 200]
+    branch = src[idx:idx + 2500]
+    assert "completed = True" in branch
+    # and validation must come first, or an empty payload still counts as done
+    assert branch.index("validate_") < branch.index("completed = True")

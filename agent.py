@@ -39,6 +39,7 @@ import sys
 
 import anthropic
 
+import completeness
 import parsers
 from apiclient import call_with_retry
 from knowledge import format_for_prompt
@@ -75,6 +76,9 @@ MAX_TOKENS = 4096
 # time.
 MAX_CONTINUATIONS = 3
 
+# See hunt.py: one retry recovers a payload written as prose instead of fields.
+MAX_FINISH_RETRIES = 2
+
 SYSTEM_PROMPT = f"""\
 You are a study assistant helping a cybersecurity student practice recon \
 and enumeration methodology on a target they are personally authorized to \
@@ -102,6 +106,8 @@ Ground rules:
   stop there. Do not write exploit code or payloads.
 - Keep tool calls purposeful - don't brute-force every wordlist or port \
   range "just because." Briefly explain your reasoning before each call.
+- The prose you write in this conversation is NOT the report. Only what you \
+  pass to `finish_session` is saved, so put the real content in the tool call.
 - When you've built a reasonably complete picture of the attack surface \
   (or you're not learning anything new), call `finish_session` with a \
   structured, study-oriented summary. Populate attack_surface, leads, and \
@@ -314,6 +320,7 @@ def main():
 
     continuations = 0
     completed = False
+    finish_retries = 0
 
     for _turn in range(MAX_TURNS):
         def _create(msgs=messages):
@@ -353,6 +360,30 @@ def main():
                 )
 
                 if block.name == "finish_session":
+                    ok, reason = completeness.validate_session(block.input)
+                    if not ok and finish_retries < MAX_FINISH_RETRIES:
+                        finish_retries += 1
+                        print(f"[agent] finish_session rejected ({reason}); asking again.")
+                        tool_results.append(
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": block.id,
+                                "content": completeness.retry_message("finish_session", reason),
+                                "is_error": True,
+                            }
+                        )
+                        continue
+                    if not ok:
+                        print(f"[agent] finish_session still incomplete ({reason}).")
+                        report.log_incomplete(
+                            f"finish_session returned an unusable payload: {reason}"
+                        )
+                        finished = True
+                        tool_results.append(
+                            {"type": "tool_result", "tool_use_id": block.id,
+                             "content": "Session ended."}
+                        )
+                        continue
                     completed = True
                     report.log_final_summary(block.input)
                     print(f"\n[agent] Session complete.\n\n{block.input.get('summary', '')}\n")

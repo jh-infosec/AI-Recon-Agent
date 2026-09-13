@@ -36,6 +36,7 @@ import sys
 
 import anthropic
 
+import completeness
 from detections import format_for_prompt
 from report import HuntReport
 from tools import loganalysis as la
@@ -62,6 +63,11 @@ MAX_TOKENS = 4096
 # time.
 MAX_CONTINUATIONS = 3
 
+# How many times a rejected finish payload may be handed back. One retry
+# recovers the common case (analysis written as prose, tool called empty);
+# more than two just burns tokens on a model that is not going to comply.
+MAX_FINISH_RETRIES = 2
+
 SYSTEM_PROMPT = f"""\
 You are a SOC analyst's study assistant helping a student practice threat \
 hunting over a set of logs they are authorized to review (their own box, a \
@@ -85,11 +91,15 @@ Ground rules:
   then in a successful SSH login is one story, not two. Build a timeline.
 - Distinguish what you can PROVE from the logs versus what you SUSPECT. A \
   finding is a lead for a human to verify, not a confirmed conviction.
-- When you've reconstructed the incident, call `finish_hunt` with a \
-  structured summary: a prose narrative, a findings list (each with severity, \
-  MITRE id, the evidence line(s), and a recommended action), the indicators \
-  of compromise (IPs, usernames, filenames), and concrete next steps for the \
-  analyst.
+- IMPORTANT: the prose you write in this conversation is NOT the report. Only \
+  what you pass to `finish_hunt` is saved. Keep your running commentary brief \
+  and put the real analysis into the tool call itself.
+- When you've reconstructed the incident, call `finish_hunt` and fill EVERY \
+  field: `summary` carries the full narrative timeline, `findings` has one \
+  entry per finding (severity, MITRE id, the exact evidence line, a \
+  recommendation), `iocs` lists the IPs, usernames and filenames, and \
+  `next_steps` gives concrete actions. An empty or one-line payload will be \
+  rejected and you will be asked to redo it.
 """
 
 TOOLS = [
@@ -152,11 +162,14 @@ TOOLS = [
     },
     {
         "name": "finish_hunt",
-        "description": "Call when the incident is reconstructed. Ends the hunt.",
+        "description": ("Call when the incident is reconstructed. Ends the hunt. "
+                        "This payload IS the report - prose written in the conversation "
+                        "is not saved. Fill every field; an empty or near-empty payload "
+                        "is rejected."),
         "input_schema": {
             "type": "object",
             "properties": {
-                "summary": {"type": "string", "description": "Prose narrative of the incident timeline."},
+                "summary": {"type": "string", "description": "The FULL narrative timeline, not a one-liner. This is the report's opening section."},
                 "findings": {
                     "type": "array",
                     "items": {
@@ -240,6 +253,7 @@ def main():
 
     continuations = 0
     completed = False
+    finish_retries = 0
 
     for _turn in range(MAX_TURNS):
         response = client.messages.create(
@@ -266,9 +280,32 @@ def main():
                 )
 
                 if block.name == "finish_hunt":
-                    completed = True
-                    report.log_findings(block.input)
-                    print(f"\n[hunt] Hunt complete.\n\n{block.input.get('summary', '')}\n")
+                    # Calling the tool is not the same as producing a
+                    # conclusion. v0.4.2 exposed a model that wrote a superb
+                    # analysis in prose and then called this with an empty
+                    # payload, producing a report with a heading and nothing
+                    # under it - and an exit code of 0.
+                    ok, reason = completeness.validate_hunt(block.input)
+                    if not ok and finish_retries < MAX_FINISH_RETRIES:
+                        finish_retries += 1
+                        print(f"[hunt] finish_hunt rejected ({reason}); asking again.")
+                        tool_results.append(
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": block.id,
+                                "content": completeness.retry_message("finish_hunt", reason),
+                                "is_error": True,
+                            }
+                        )
+                        continue
+
+                    if not ok:
+                        print(f"[hunt] finish_hunt still incomplete ({reason}).")
+                        report.log_incomplete(f"finish_hunt returned an unusable payload: {reason}")
+                    else:
+                        completed = True
+                        report.log_findings(block.input)
+                        print(f"\n[hunt] Hunt complete.\n\n{block.input.get('summary', '')}\n")
                     finished = True
                     tool_results.append(
                         {"type": "tool_result", "tool_use_id": block.id, "content": "Hunt ended."}
