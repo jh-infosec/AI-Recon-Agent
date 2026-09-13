@@ -30,13 +30,28 @@ RESET = "\033[0m"
 BOLD = "\033[1m"
 DIM = "\033[2m"
 
+# Palette: red, white, grey, green, with black used only as text ON a coloured
+# badge. Black as a foreground colour is unusable here - the terminal this runs
+# in has a dark background, so black text would be invisible - but black on a
+# green or red block reads well and gives the coverage marks real weight.
+BLACK = "\033[30m"
 RED = "\033[31m"
 GREEN = "\033[32m"
-YELLOW = "\033[33m"
-BLUE = "\033[34m"
-MAGENTA = "\033[35m"
-CYAN = "\033[36m"
+WHITE = "\033[37m"
+BRIGHT_WHITE = "\033[97m"
+BRIGHT_RED = "\033[91m"
+BRIGHT_GREEN = "\033[92m"
 GREY = "\033[90m"
+
+ON_GREEN = "\033[42m"
+ON_RED = "\033[41m"
+ON_WHITE = "\033[47m"
+
+# Kept as aliases so nothing that imported the old names breaks.
+YELLOW = BRIGHT_WHITE
+BLUE = BRIGHT_WHITE
+MAGENTA = WHITE
+CYAN = BRIGHT_WHITE
 
 
 def colour_enabled(stream=None) -> bool:
@@ -75,12 +90,12 @@ def c(text: str, *codes: str) -> str:
 # --------------------------------------------------------------------------- #
 def agent(label: str, text: str) -> str:
     """A status line from the agent itself: [agent] / [hunt]."""
-    return f"{c('[' + label + ']', CYAN, BOLD)} {text}"
+    return f"{c('[' + label + ']', BRIGHT_WHITE, BOLD)} {text}"
 
 
 def tool_call(name: str, args: str) -> str:
     """The tool the model chose, with its arguments."""
-    return f"{c('[tool]', MAGENTA, BOLD)} {c(name, BOLD)}{c(args, GREY)}"
+    return f"{c('[tool]', GREY, BOLD)} {c(name, BRIGHT_WHITE, BOLD)}{c(args, GREY)}"
 
 
 def command(cmd: str) -> str:
@@ -88,20 +103,22 @@ def command(cmd: str) -> str:
     The exact command that ran. Shown prefixed with $ so it can be copied
     straight into a shell and re-run.
     """
-    return f"      {c('$', YELLOW, BOLD)} {c(cmd, YELLOW)}"
+    # White and bold: distinct from grey notes and from green findings, and
+    # the one line most likely to be copied straight into a shell.
+    return f"      {c('$', GREEN, BOLD)} {c(cmd, BRIGHT_WHITE, BOLD)}"
 
 
 def finding(text: str) -> str:
     """Something worth noticing."""
-    return f"      {c('[+]', GREEN, BOLD)} {c(text, GREEN)}"
+    return f"      {c('[+]', BRIGHT_GREEN, BOLD)} {c(text, GREEN)}"
 
 
 def warn(text: str) -> str:
-    return f"      {c('[!]', YELLOW, BOLD)} {c(text, YELLOW)}"
+    return f"      {c('[!]', BRIGHT_RED, BOLD)} {c(text, WHITE)}"
 
 
 def bad(text: str) -> str:
-    return f"      {c('[-]', RED, BOLD)} {c(text, RED)}"
+    return f"      {c('[-]', BRIGHT_RED, BOLD)} {c(text, BRIGHT_RED)}"
 
 
 def note(text: str) -> str:
@@ -109,9 +126,17 @@ def note(text: str) -> str:
 
 
 def check(satisfied: bool, name: str, detail: str) -> str:
+    """
+    Coverage marks as badges: black on green for pass, black on red for miss.
+    This is the one place black earns its keep - as text on a colour block it
+    is legible on any background, where black on the terminal itself would not
+    be.
+    """
     if satisfied:
-        return f"  {c('[✓]', GREEN, BOLD)} {name} {c('- ' + detail, GREY)}"
-    return f"  {c('[✗]', RED, BOLD)} {c(name, RED)} {c('- ' + detail, GREY)}"
+        return (f"  {c(' PASS ', BLACK, ON_GREEN, BOLD)} "
+                f"{c(name, WHITE)} {c('- ' + detail, GREY)}")
+    return (f"  {c(' MISS ', BLACK, ON_RED, BOLD)} "
+            f"{c(name, BRIGHT_RED, BOLD)} {c('- ' + detail, GREY)}")
 
 
 def heading(text: str) -> str:
