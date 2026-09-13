@@ -1,10 +1,15 @@
 """
 safety.py
 =========
-Every tool call in this project routes through `assert_authorized()` before
-it's allowed to touch the network. This is the single choke point that keeps
-the agent from ever running against a host you haven't explicitly attested
-to being authorized for.
+Every NETWORK-TOUCHING tool wrapper in this project routes through
+`assert_authorized()` before it's allowed to reach a host. That is the single
+choke point keeping the agent from running against a target you haven't
+explicitly attested to being authorized for.
+
+The one wrapper that does not call the gate is `searchsploit_lookup`, which
+queries a local ExploitDB mirror and never leaves the machine. That is the
+only exception, and it is named here rather than left for a reader to
+discover.
 
 Design goals:
   - Fail closed: if the target isn't in config/targets.yaml, nothing runs.
@@ -16,6 +21,16 @@ Design goals:
     purpose, each session. There is no "auto-detect and add" convenience
     path, because that convenience is exactly what would make it easy to
     point this at something you're not authorized to touch.
+
+The gate answers "may this tool talk to this host". It does NOT answer "is
+every other argument safe", and treating it as though it did is how the
+v0.3.0 wordlist defect happened. Every model-controlled argument that reaches
+a subprocess needs its own constraint, so this module also owns:
+
+  - `validate_host_format`  - hostnames and IPs
+  - `resolve_wordlist`      - paths, locked to allowed roots
+  - `validate_extensions`   - ffuf extension lists
+  - `validate_ports`        - nmap port specifications
 """
 
 import ipaddress
@@ -27,6 +42,21 @@ import yaml
 
 CONFIG_PATH = Path(__file__).parent / "config" / "targets.yaml"
 ALLOWED_PLATFORMS = {"htb", "thm", "homelab"}
+
+# Roots a wordlist may live under. A wordlist is read line by line and each
+# line is transmitted to the target, so an unconstrained path turns any
+# readable file into an exfiltration channel. Existence is not a constraint;
+# location is.
+ALLOWED_WORDLIST_ROOTS = (
+    Path("/usr/share/wordlists"),
+    Path("/usr/share/seclists"),
+    Path("/usr/share/dirb"),
+    Path("/usr/share/dirbuster"),
+    Path(__file__).parent / "wordlists",
+)
+
+_EXTENSIONS_RE = re.compile(r"^\.?[A-Za-z0-9]{1,10}(,\s*\.?[A-Za-z0-9]{1,10})*$")
+_PORTS_RE = re.compile(r"^\d{1,5}(-\d{1,5})?(,\d{1,5}(-\d{1,5})?)*$")
 
 # Loose hostname pattern (RFC 1123-ish) - used only for lab hostnames like
 # "example.htb"; IPs are validated separately via ipaddress.
@@ -84,6 +114,82 @@ def validate_host_format(host: str) -> str:
         return host
 
     raise NotAuthorizedError(f"'{host}' doesn't look like a valid host/IP - refusing to use it")
+
+
+def resolve_wordlist(path: str) -> Path:
+    """
+    Resolve a wordlist path and confirm it sits under an allowed root.
+
+    A wordlist is read line by line and each line is sent to the target, so
+    an arbitrary readable file passed here is an exfiltration primitive:
+    point it at /etc/passwd and every line leaves the machine as a request.
+    Checking that the file exists - which is all v0.3.0 did - is not a
+    constraint, because the interesting files all exist.
+
+    Symlinks are resolved before the check, so a link planted inside an
+    allowed root cannot be used to escape it.
+    """
+    raw = (path or "").strip()
+    if not raw:
+        raise NotAuthorizedError("No wordlist path supplied.")
+
+    candidate = Path(raw).expanduser()
+    try:
+        candidate = candidate.resolve(strict=True)
+    except (OSError, RuntimeError) as e:
+        raise NotAuthorizedError(f"Wordlist '{raw}' could not be resolved: {e}") from e
+
+    if not candidate.is_file():
+        raise NotAuthorizedError(f"Wordlist '{raw}' is not a regular file.")
+
+    for root in ALLOWED_WORDLIST_ROOTS:
+        try:
+            resolved_root = root.resolve()
+        except (OSError, RuntimeError):
+            continue
+        if candidate == resolved_root or resolved_root in candidate.parents:
+            return candidate
+
+    allowed = ", ".join(str(r) for r in ALLOWED_WORDLIST_ROOTS)
+    raise NotAuthorizedError(
+        f"Wordlist '{raw}' resolves to {candidate}, which is outside the allowed "
+        f"wordlist roots ({allowed}). A wordlist is transmitted to the target line "
+        f"by line, so it must come from a wordlist directory - not from anywhere "
+        f"readable on the machine."
+    )
+
+
+def validate_extensions(extensions: str) -> str:
+    """Validate an ffuf extension list like '.php,.txt,.bak'. Empty is allowed."""
+    ext = (extensions or "").strip()
+    if not ext:
+        return ""
+    if not _EXTENSIONS_RE.match(ext):
+        raise NotAuthorizedError(
+            f"'{extensions}' is not a valid extension list. Expected something "
+            f"like '.php,.txt,.bak'."
+        )
+    return ext
+
+
+def validate_ports(ports: str) -> str:
+    """
+    Validate an nmap port specification: either the literal 'top1000' or a
+    comma-separated list of ports and ranges like '22,80,443' or '1-1024'.
+    """
+    spec = (ports or "").strip()
+    if spec == "top1000":
+        return spec
+    if not _PORTS_RE.match(spec):
+        raise NotAuthorizedError(
+            f"'{ports}' is not a valid port specification. Expected 'top1000' or "
+            f"a list like '22,80,443' or '1-1024'."
+        )
+    for part in spec.split(","):
+        for n in part.split("-"):
+            if not 0 < int(n) <= 65535:
+                raise NotAuthorizedError(f"Port '{n}' is out of range (1-65535).")
+    return spec
 
 
 def assert_authorized(host: str) -> dict:

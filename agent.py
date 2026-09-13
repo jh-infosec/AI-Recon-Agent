@@ -44,7 +44,7 @@ from report import SessionReport
 from safety import NotAuthorizedError, assert_authorized
 from tools import recon
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 # Sonnet 5 is the sweet spot here: frontier agentic/tool-use quality at
 # Sonnet pricing, which matters because each session fires many tool-use

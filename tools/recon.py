@@ -22,13 +22,21 @@ New in v0.2.0: run_ffuf (dir + virtual-host fuzzing) and run_dns_enum
 and both still pass through the same assert_authorized() gate.
 """
 
+import shlex
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from safety import assert_authorized, validate_host_format
+from safety import (
+    NotAuthorizedError,
+    assert_authorized,
+    resolve_wordlist,
+    validate_extensions,
+    validate_host_format,
+    validate_ports,
+)
 
 DEFAULT_TIMEOUT = 300  # seconds
 DEFAULT_WORDLIST = "/usr/share/wordlists/dirb/common.txt"
@@ -62,7 +70,7 @@ def _run(cmd: list, timeout: int = DEFAULT_TIMEOUT) -> dict:
             check=False,
         )
         return {
-            "command": " ".join(cmd),
+            "command": shlex.join(cmd),
             "returncode": proc.returncode,
             "stdout": proc.stdout[-20000:],  # cap to keep reports/context sane
             "stderr": proc.stderr[-4000:],
@@ -70,7 +78,7 @@ def _run(cmd: list, timeout: int = DEFAULT_TIMEOUT) -> dict:
         }
     except subprocess.TimeoutExpired:
         return {
-            "command": " ".join(cmd),
+            "command": shlex.join(cmd),
             "returncode": None,
             "stdout": "",
             "stderr": f"Timed out after {timeout}s",
@@ -78,14 +86,19 @@ def _run(cmd: list, timeout: int = DEFAULT_TIMEOUT) -> dict:
         }
 
 
-def _missing_wordlist_result(command: str, wordlist: str) -> dict:
+def _refused_wordlist_result(command: str, error: Exception) -> dict:
+    """
+    A wordlist that is missing OR outside the allowed roots produces a result
+    rather than an exception, so the model sees why it was refused and can
+    pick a real wordlist instead of retrying the same bad path.
+    """
     return {
         "command": command,
         "returncode": None,
         "stdout": "",
         "stderr": (
-            f"Wordlist not found at {wordlist}. Install seclists "
-            f"(`sudo apt install seclists`) or pass a valid path."
+            f"{error} If the wordlist is simply not installed, try "
+            f"`sudo apt install seclists`."
         ),
         "timed_out": False,
     }
@@ -97,6 +110,7 @@ def run_nmap(target: str, ports: str = "top1000") -> dict:
     --top-ports 1000) or a comma-separated list like "22,80,443".
     """
     assert_authorized(target)
+    ports = validate_ports(ports)
     binary = _require_binary("nmap", "nmap")
 
     cmd = [binary, "-sV", "-sC", "-Pn"]
@@ -129,14 +143,15 @@ def run_gobuster(
 ) -> dict:
     """Directory/file enumeration against a web service."""
     assert_authorized(target)
+    try:
+        wl = resolve_wordlist(wordlist)
+    except NotAuthorizedError as e:
+        return _refused_wordlist_result("gobuster dir", e)
+
     binary = _require_binary("gobuster", "gobuster")
-
-    if not Path(wordlist).exists():
-        return _missing_wordlist_result(f"gobuster dir -u ... -w {wordlist}", wordlist)
-
     scheme = "https" if https else "http"
     url = f"{scheme}://{target}:{port}"
-    cmd = [binary, "dir", "-u", url, "-w", wordlist, "-q", "-t", "20"]
+    cmd = [binary, "dir", "-u", url, "-w", str(wl), "-q", "-t", "20"]
 
     return _run(cmd, timeout=300)
 
@@ -188,9 +203,10 @@ def run_ffuf(
         # Validate the domain the same way we validate a target host, so a
         # weird value can't sneak odd characters into the Host header.
         validate_host_format(domain)
-        wl = wordlist or DEFAULT_VHOST_WORDLIST
-        if not Path(wl).exists():
-            return _missing_wordlist_result(f"ffuf ... -w {wl} (vhost)", wl)
+        try:
+            wl = resolve_wordlist(wordlist or DEFAULT_VHOST_WORDLIST)
+        except NotAuthorizedError as e:
+            return _refused_wordlist_result("ffuf (vhost)", e)
 
         binary = _require_binary("ffuf", "ffuf")
         url = f"{scheme}://{target}:{port}/"
@@ -207,9 +223,11 @@ def run_ffuf(
         return _run(cmd, timeout=300)
 
     # --- dir mode (default) ---
-    wl = wordlist or DEFAULT_WORDLIST
-    if not Path(wl).exists():
-        return _missing_wordlist_result(f"ffuf ... -w {wl} (dir)", wl)
+    extensions = validate_extensions(extensions)
+    try:
+        wl = resolve_wordlist(wordlist or DEFAULT_WORDLIST)
+    except NotAuthorizedError as e:
+        return _refused_wordlist_result("ffuf (dir)", e)
 
     binary = _require_binary("ffuf", "ffuf")
     url = f"{scheme}://{target}:{port}/FUZZ"
@@ -221,8 +239,8 @@ def run_ffuf(
         "-t", "40",
         "-noninteractive",
     ]
-    if extensions.strip():
-        cmd += ["-e", extensions.strip()]
+    if extensions:
+        cmd += ["-e", extensions]
 
     return _run(cmd, timeout=300)
 
