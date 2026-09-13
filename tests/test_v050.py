@@ -273,3 +273,123 @@ def test_agent_labels_fetched_content_as_untrusted():
 def test_system_prompt_warns_about_page_content():
     src = (Path(__file__).parent.parent / "agent.py").read_text(encoding="utf-8")
     assert "evidence, never" in src
+
+
+# --------------------------------------------------------------------------- #
+# v0.5.1 - defects from the first live run of v0.5.0
+# --------------------------------------------------------------------------- #
+import console  # noqa: E402
+from surface import (  # noqa: E402
+    AttackSurface,
+    coverage,
+    coverage_summary,
+    is_infrastructure_hostname,
+)
+
+LIVE_BOX_XML = """<?xml version="1.0"?><nmaprun><host>
+<address addr="10.112.129.0"/>
+<hostnames><hostname name="ip-172-31-39-192"/></hostnames><ports>
+<port protocol="tcp" portid="22"><state state="open"/>
+  <service name="ssh" product="OpenSSH" version="9.6p1"/></port>
+<port protocol="tcp" portid="7777"><state state="open"/>
+  <service name="http" product="nginx" version="1.28.2"/></port>
+<port protocol="tcp" portid="7778"><state state="open"/>
+  <service name="http" product="nginx" version="1.29.5"/></port>
+<port protocol="tcp" portid="8443"><state state="open"/>
+  <service name="https-alt" product="dcv" tunnel="ssl"/></port>
+</ports></host></nmaprun>"""
+
+
+def _live_surface():
+    s = AttackSurface()
+    s.ingest("run_nmap", {}, parsers.parse_nmap_xml(LIVE_BOX_XML))
+    return s
+
+
+def test_remote_desktop_on_https_is_not_a_web_service():
+    """
+    nmap reports Amazon DCV on 8443 as service 'https-alt', product 'dcv'.
+    The gate demanded a fingerprint and a directory fuzz against a remote
+    desktop service - the WinRM false positive from v0.4.6 in a new costume,
+    which is why the product string is checked and not only the service name.
+    """
+    s = _live_surface()
+    assert 8443 not in s.web_ports
+    assert 8443 in s.non_content_http
+
+
+def test_real_web_ports_on_the_same_box_are_still_checked():
+    s = _live_surface()
+    assert set(s.web_ports) == {7777, 7778}
+
+
+@pytest.mark.parametrize("name", [
+    "ip-172-31-39-192", "ip-10-0-0-5.eu-west-1.compute.internal",
+    "ec2-1-2-3-4.amazonaws.com", "box.internal", "localhost",
+])
+def test_infrastructure_hostnames_are_recognised(name):
+    assert is_infrastructure_hostname(name)
+
+
+@pytest.mark.parametrize("name", ["rootme.thm", "dev.example.htb", "intranet.local"])
+def test_real_hostnames_are_not_skipped(name):
+    assert not is_infrastructure_hostname(name)
+
+
+def test_vhost_check_is_skipped_for_an_ec2_hostname():
+    """Nothing is served under an EC2 private DNS name, so fuzzing it is pointless."""
+    checks = coverage(_live_surface())
+    vhost = [c for c in checks if "ip-172-31-39-192" in c.name]
+    assert vhost and vhost[0].satisfied
+    assert "hosting environment" in vhost[0].detail
+
+
+def test_only_the_genuine_gap_remains():
+    """The live run reported four gaps; three were the gate being wrong."""
+    s = _live_surface()
+    for tool, inp in [("run_whatweb", {"port": 7777}), ("run_whatweb", {"port": 7778}),
+                      ("run_ffuf", {"mode": "dir", "port": 7778})]:
+        s.ingest(tool, inp, {})
+    missed = coverage_summary(coverage(s))["missed"]
+    assert missed == ["Web service on 7777 content-enumerated"]
+
+
+def test_a_genuine_https_web_server_is_still_required():
+    xml = ('<?xml version="1.0"?><nmaprun><host><address addr="10.0.0.1"/><ports>'
+           '<port protocol="tcp" portid="443"><state state="open"/>'
+           '<service name="https" product="nginx" version="1.24" tunnel="ssl"/></port>'
+           "</ports></host></nmaprun>")
+    s = AttackSurface()
+    s.ingest("run_nmap", {}, parsers.parse_nmap_xml(xml))
+    assert 443 in s.web_ports
+    assert not coverage_summary(coverage(s))["complete"]
+
+
+# --- fetch_page highlights ------------------------------------------------- #
+def test_fetch_highlights_always_lead_with_status(authorized, server):
+    """
+    A fetch of /.git/HEAD returning 200 IS the finding. On the live run the
+    console showed only the Server header, because the response was not HTML
+    so every extractor came back empty.
+    """
+    r = recon.fetch_page("127.0.0.1", port=server, path="/")
+    assert console.highlights("fetch_page", r["parsed"])[0].startswith("HTTP 200")
+
+
+def test_non_html_response_shows_its_body(authorized, server):
+    r = recon.fetch_page("127.0.0.1", port=server, path="/missing")
+    lines = console.highlights("fetch_page", r["parsed"])
+    assert lines[0].startswith("HTTP 404")
+
+
+def test_body_preview_is_captured(authorized, server):
+    r = recon.fetch_page("127.0.0.1", port=server, path="/")
+    assert r["parsed"]["preview"]
+    assert len(r["parsed"]["preview"]) <= 604
+
+
+# --- dns command formatting ------------------------------------------------ #
+def test_dns_command_is_not_double_prefixed():
+    """run_dns_enum added its own '$ ', and console.command() adds another."""
+    src = (Path(__file__).parent.parent / "tools" / "recon.py").read_text(encoding="utf-8")
+    assert 'sections.append(f"$ ' not in src

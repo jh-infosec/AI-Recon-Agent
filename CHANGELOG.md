@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.1] - 2026-09-13
+
+Three defects from the first live run of v0.5.0. `fetch_page` itself worked well — the model used it unprompted to confirm an exposed `.git` directory by fetching `/.git/HEAD` rather than inferring it from an nmap script hit.
+
+Fixed: **`fetch_page` highlights showed almost nothing for non-HTML responses.** A 200 on `/.git/HEAD` printed only the Server header, because the body was not HTML so every extractor came back empty — and the status code, which was the actual finding, never reached the operator. Status now leads every fetch, and a short body preview is shown when nothing structured came out. **The coverage gate demanded web checks against Amazon DCV** on 8443, a remote desktop service nmap labels `https-alt` with product `dcv` — the WinRM false positive from v0.4.6 in a new costume, now caught by product string as well as service name. **It also demanded vhost fuzzing against `ip-172-31-39-192`,** an EC2 private DNS name; infrastructure hostnames are now recognised and skipped, since nothing is served under them. Of the four gaps that run reported, three were the gate being wrong. **`run_dns_enum` double-prefixed its command** with `$`, so the console printed `$ $ /usr/bin/dig`.
+
+Tests: 17 new (302 total), built from the live scan and verified against v0.5.0.
+
 ## [0.5.0] - 2026-09-11
 
 Both features come from comparing a live RootMe run against the box's actual path: the agent found `/panel`, correctly guessed it was an upload area, and could neither enumerate inside it nor read it.

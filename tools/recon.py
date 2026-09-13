@@ -334,7 +334,9 @@ def run_dns_enum(target: str, domain: str = "") -> dict:
     def _do(label, args, timeout=30):
         nonlocal rc_final
         r = _run([binary, *args], timeout=timeout)
-        sections.append(f"$ {r['command']}")
+        # No "$ " prefix here: console.command() adds one when it prints, and
+        # the report renders these as commands too. Doubling it produced "$ $ dig".
+        sections.append(r["command"])
         if r.get("stdout"):
             combined_stdout.append(f"### {label}\n{r['stdout'].strip()}")
         if r.get("stderr"):
@@ -480,6 +482,10 @@ def fetch_page(target: str, port: int = 80, https: bool = False, path: str = "/"
         }
 
     parsed = parsers.parse_html(body)
+    # A short body preview, so a non-HTML response (a config file, robots.txt,
+    # a .git object) still shows the operator what came back.
+    preview = body.strip()
+    parsed["preview"] = preview[:600] + ("..." if len(preview) > 600 else "")
     parsed["status"] = status
     parsed["url"] = final_url
     parsed["truncated"] = truncated
