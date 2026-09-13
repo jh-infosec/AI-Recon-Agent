@@ -472,3 +472,96 @@ def test_dns_render_calls_out_a_zone_transfer():
     )
     assert "AXFR" in parsers.render_markdown("run_dns_enum", axfr)
     assert "AXFR" in parsers.render_html("run_dns_enum", axfr)
+
+
+# --------------------------------------------------------------------------- #
+# v0.4.6 - the coverage gate must not punish correct judgment
+#
+# From the first live offensive run, against a THM Windows box. nmap reports
+# WinRM on 5985 as service "http", product "Microsoft HTTPAPI", so the gate
+# treated it as a web service, demanded a fingerprint and a directory
+# enumeration, and failed the session when the model correctly declined to run
+# gobuster against a PowerShell remoting endpoint.
+#
+# A coverage gate cannot distinguish "was not done" from "correctly did not
+# apply" unless it is told, and without that it marks down exactly the
+# judgment it exists to teach.
+# --------------------------------------------------------------------------- #
+BLUE_BOX_XML = """<?xml version="1.0"?>
+<nmaprun><host><address addr="10.112.149.2"/><ports>
+<port protocol="tcp" portid="135"><state state="open"/>
+  <service name="msrpc" product="Microsoft Windows RPC"/></port>
+<port protocol="tcp" portid="139"><state state="open"/>
+  <service name="netbios-ssn"/></port>
+<port protocol="tcp" portid="445"><state state="open"/>
+  <service name="microsoft-ds"/></port>
+<port protocol="tcp" portid="3389"><state state="open"/>
+  <service name="ms-wbt-server"/></port>
+<port protocol="tcp" portid="5985"><state state="open"/>
+  <service name="http" product="Microsoft HTTPAPI httpd" version="2.0"/></port>
+</ports></host></nmaprun>"""
+
+
+def _surface_from(xml):
+    s = AttackSurface()
+    s.ingest("run_nmap", {}, parsers.parse_nmap_xml(xml))
+    return s
+
+
+def test_winrm_is_not_treated_as_a_web_service():
+    s = _surface_from(BLUE_BOX_XML)
+    assert 5985 not in s.web_ports
+    assert 5985 in s.non_content_http
+
+
+def test_windows_box_with_no_web_server_passes_the_gate():
+    """The exact session that wrongly exited 3."""
+    s = _surface_from(BLUE_BOX_XML)
+    sm = coverage_summary(coverage(s))
+    assert sm["complete"], f"still flagged: {sm['missed']}"
+
+
+def test_the_exclusion_is_explained_not_hidden():
+    """Silently dropping a port would make the report look incomplete."""
+    checks = coverage(_surface_from(BLUE_BOX_XML))
+    excluded = [c for c in checks if "5985" in c.name]
+    assert excluded, "the exclusion is invisible in the coverage table"
+    assert excluded[0].satisfied
+    assert "WinRM" in excluded[0].detail
+
+
+def test_non_web_ports_get_no_exclusion_row():
+    """
+    Port 135 matches a management-API product string but was never a web
+    candidate; a row saying it was 'correctly excluded from web checks' is
+    noise.
+    """
+    s = _surface_from(BLUE_BOX_XML)
+    assert 135 not in s.non_content_http
+    assert 445 not in s.non_content_http
+
+
+def test_a_real_web_server_is_still_required_to_be_checked():
+    """The fix must not become a blanket excuse for skipping web checks."""
+    xml = (
+        '<?xml version="1.0"?><nmaprun><host><address addr="10.10.10.5"/><ports>'
+        '<port protocol="tcp" portid="80"><state state="open"/>'
+        '<service name="http" product="Apache httpd" version="2.4.41"/></port>'
+        "</ports></host></nmaprun>"
+    )
+    sm = coverage_summary(coverage(_surface_from(xml)))
+    assert not sm["complete"]
+    assert any("80" in m for m in sm["missed"])
+
+
+@pytest.mark.parametrize("port", [5985, 5986, 623, 9100])
+def test_known_management_ports_are_excluded(port):
+    from surface import is_content_web_service
+    is_web, why = is_content_web_service(port, "http", "")
+    assert not is_web and why
+
+
+def test_ordinary_high_web_port_is_not_excluded():
+    from surface import is_content_web_service
+    is_web, _ = is_content_web_service(8080, "http-proxy", "Apache Tomcat")
+    assert is_web

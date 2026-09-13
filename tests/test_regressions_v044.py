@@ -141,3 +141,43 @@ def test_normalised_payload_still_validates():
     })
     ok, reason = completeness.validate_hunt(payload)
     assert ok, reason
+
+
+# --------------------------------------------------------------------------- #
+# v0.4.5 - the schema must require what the report needs
+#
+# Three live runs, three rejected first attempts, always the same reason:
+# summary and findings both empty. The prompt said the payload was the report;
+# the schema said only `summary` was required. The schema is the stronger
+# signal, and it was the one that was wrong. Every rejected attempt costs a
+# full API turn.
+# --------------------------------------------------------------------------- #
+def test_finish_hunt_requires_findings_not_just_summary():
+    import hunt
+    schema = next(t for t in hunt.TOOLS if t["name"] == "finish_hunt")["input_schema"]
+    assert "findings" in schema["required"], "findings was optional until v0.4.5"
+    assert "summary" in schema["required"]
+    assert schema["properties"]["findings"].get("minItems") == 1
+
+
+def test_hunt_findings_require_their_evidence():
+    """A finding with no evidence is an assertion, not a result."""
+    import hunt
+    schema = next(t for t in hunt.TOOLS if t["name"] == "finish_hunt")["input_schema"]
+    required = schema["properties"]["findings"]["items"]["required"]
+    for field in ("title", "severity", "mitre", "evidence", "recommendation"):
+        assert field in required
+
+
+def test_finish_session_requires_study_pointers():
+    """The study pointers are what make the recon report a study artifact."""
+    import agent
+    schema = next(t for t in agent.TOOLS if t["name"] == "finish_session")["input_schema"]
+    assert "study_pointers" in schema["required"]
+    assert schema["properties"]["study_pointers"].get("minItems") == 1
+
+
+@pytest.mark.parametrize("name", ["agent.py", "hunt.py"])
+def test_finish_descriptions_state_the_payload_is_the_report(name):
+    src = (Path(__file__).parent.parent / name).read_text(encoding="utf-8")
+    assert "payload IS the report" in src

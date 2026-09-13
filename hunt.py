@@ -173,22 +173,40 @@ TOOLS = [
                 "summary": {"type": "string", "description": "The FULL narrative timeline, not a one-liner. This is the report's opening section."},
                 "findings": {
                     "type": "array",
+                    "minItems": 1,
+                    "description": (
+                        "One entry per distinct finding. This is the core of the "
+                        "report - a narrative with no findings is not a hunt result."
+                    ),
                     "items": {
                         "type": "object",
                         "properties": {
-                            "title": {"type": "string"},
+                            "title": {"type": "string", "description": "What was found, in a few words."},
                             "severity": {"type": "string", "enum": ["critical", "high", "medium", "low", "info"]},
-                            "mitre": {"type": "string"},
-                            "evidence": {"type": "string", "description": "Exact log line(s) or counts."},
-                            "recommendation": {"type": "string"},
+                            "mitre": {"type": "string", "description": "Technique id and name, e.g. 'T1110 - Brute Force'."},
+                            "evidence": {"type": "string", "description": "The exact log line(s) or counts that prove it."},
+                            "recommendation": {"type": "string", "description": "What the analyst should do about it."},
                         },
-                        "required": ["title", "severity"],
+                        "required": ["title", "severity", "mitre", "evidence", "recommendation"],
                     },
                 },
-                "iocs": {"type": "array", "items": {"type": "string"}, "description": "IPs, users, filenames."},
-                "next_steps": {"type": "array", "items": {"type": "string"}},
+                "iocs": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Every indicator observed: IPs, usernames, filenames, URLs.",
+                },
+                "next_steps": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Concrete actions for the analyst, in priority order.",
+                },
             },
-            "required": ["summary"],
+            # findings is required alongside summary because it was optional
+            # until v0.4.5 and the model reliably read that as permission to
+            # put everything in the narrative and leave the structure empty -
+            # three live runs, three rejected first attempts. A schema is a
+            # stronger signal than a sentence in the prompt.
+            "required": ["summary", "findings", "iocs", "next_steps"],
         },
     },
 ]

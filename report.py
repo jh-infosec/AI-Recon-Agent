@@ -205,7 +205,13 @@ class SessionReport:
                 f.write(f"  - {port}: {svc}\n")
             f.write(f"- Web ports: {surface.get('web_ports') or 'none'}\n")
             f.write(f"- Hostnames: {surface.get('hostnames') or 'none'}\n")
-            f.write(f"- DNS exposed: {surface.get('dns_open')}\n\n")
+            f.write(f"- DNS exposed: {surface.get('dns_open')}\n")
+            excluded = surface.get("non_content_http") or {}
+            if excluded:
+                f.write("- HTTP-speaking ports excluded from web checks:\n")
+                for port, why in excluded.items():
+                    f.write(f"  - {port}: {why}\n")
+            f.write("\n")
 
     def log_telemetry(self, t: dict):
         """Record token usage and the estimated cost of the session."""
@@ -390,6 +396,10 @@ class SessionReport:
             parts.append(f"<li>Web ports: {e(str(surf.get('web_ports') or 'none'))}</li>")
             parts.append(f"<li>Hostnames: {e(str(surf.get('hostnames') or 'none'))}</li>")
             parts.append(f"<li>DNS exposed: {e(str(surf.get('dns_open')))}</li>")
+            for port, why in (surf.get("non_content_http") or {}).items():
+                parts.append(
+                    f"<li>Port {e(str(port))} excluded from web checks: {e(str(why))}</li>"
+                )
             parts.append("</ul></section>")
 
         if self._telemetry:
