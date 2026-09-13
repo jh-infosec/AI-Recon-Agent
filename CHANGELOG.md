@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.4] - 2026-09-13
+
+From a live Mr Robot run where directory enumeration produced nothing on a WordPress site whose paths are in the default wordlist.
+
+Fixed: **ffuf's partial results were being discarded.** The output file is read after the process returns and lives in a `TemporaryDirectory`, so a scan killed by the wrapper timeout had everything it had already written deleted along with it. ffuf is now given `-maxtime` below the wrapper timeout so it exits cleanly and flushes, the file is read even on timeout, and a cut-short scan is labelled `PARTIAL` rather than passed off as complete. The bug dated from v0.4.0 and was masked because the model recovered by guessing WordPress paths from the page theme.
+
+Changed: **An empty directory scan now says it is unusual** — on a server that is serving pages, finding no paths at all is more often a scanning problem (wordlist mismatch, rate limiting, uniform responses) than an empty site, and the payload now says so and points at `fetch_page` and `robots.txt`, which is what actually worked on that box. Same reasoning as the empty-nmap signal in v0.5.3.
+
+Changed: **Colour scheme** is now red, white, grey and green, with black used only as text on a colour badge — black as a foreground is invisible on a dark terminal, but reads well on a block. Coverage marks render as ` PASS ` and ` MISS ` badges, and the words survive when colour is off.
+
+Tests: 8 new (348 total).
+
 ## [0.5.3] - 2026-09-13
 
 A live session looped. nmap returned zero open ports and the model, unable to tell "nothing is listening" from "the scan did not work", retried — five nmap calls, three of them byte-identical, plus an escalation to all 65535 ports that ran the 600-second timeout to its end. Every retry is a full API turn and up to ten minutes of wall clock, and none could have returned anything different.

@@ -195,16 +195,43 @@ def compact_for_model(tool_name: str, parsed: dict, budget: int = MODEL_PAYLOAD_
 
     if tool_name in {"run_ffuf", "run_gobuster"}:
         results = parsed.get("results", [])
+        view = None
         for cap in (500, 200, 50):
-            view = {
+            candidate = {
                 "count": parsed.get("count", len(results)),
                 "results": results[:cap],
                 "truncated": len(results) > cap,
             }
-            if len(json.dumps(view, default=str)) <= budget:
-                return view
-        return {"count": parsed.get("count", len(results)), "results": results[:50],
-                "truncated": True}
+            if len(json.dumps(candidate, default=str)) <= budget:
+                view = candidate
+                break
+        if view is None:
+            view = {"count": parsed.get("count", len(results)),
+                    "results": results[:50], "truncated": True}
+
+        if parsed.get("partial"):
+            view["partial"] = True
+            view["result"] = (
+                "PARTIAL: the scan was cut short by its time limit, so this is "
+                "what it found before stopping and not the complete set. Missing "
+                "paths do not mean absent paths."
+            )
+        elif not results:
+            # Same reasoning as the empty nmap result: an absence that might be
+            # a failure has to say so. A directory scan finding literally
+            # nothing on a live web server is unusual - on Mr Robot, gobuster
+            # returned nothing on a site that plainly had content, and the
+            # empty result was indistinguishable from "no hidden paths exist".
+            view["result"] = (
+                "This scan found NO paths at all. On a web server that is "
+                "serving pages, that is unusual and is more often a scanning "
+                "problem than an empty site: the wordlist may not suit this "
+                "application, or the server may be rate-limiting, rewriting, or "
+                "answering uniformly. Do not re-run the same scan. Read the "
+                "homepage and robots.txt with fetch_page and try paths the "
+                "content itself suggests."
+            )
+        return view
 
     if tool_name == "run_dns_enum":
         return {

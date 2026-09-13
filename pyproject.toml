@@ -1,6 +1,6 @@
 [project]
 name = "ai-recon-agent"
-version = "0.5.3"
+version = "0.5.4"
 description = "A small, Claude-orchestrated recon/study agent for authorized targets only."
 requires-python = ">=3.10"
 

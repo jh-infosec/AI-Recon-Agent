@@ -48,6 +48,9 @@ from safety import (
 )
 
 MAX_OUTPUT_CHARS = 20000
+# ffuf stops itself at this point and flushes its output file; the wrapper
+# timeout sits above it so the clean exit wins.
+FFUF_MAXTIME = 240
 DEFAULT_TIMEOUT = 300  # seconds
 DEFAULT_WORDLIST = "/usr/share/wordlists/dirb/common.txt"
 # Common on Kali/Parrot via the seclists package - used for vhost/subdomain fuzzing.
@@ -274,8 +277,12 @@ def run_ffuf(
                 "-noninteractive",
                 "-of", "json", "-o", str(outfile),
             ]
-            result = _run(cmd, timeout=300)
+            cmd += ["-maxtime", str(FFUF_MAXTIME)]
+            result = _run(cmd, timeout=FFUF_MAXTIME + 30)
             result["parsed"] = parsers.parse_ffuf_json(_read_json_file(outfile))
+            if result.get("timed_out") and result["parsed"].get("results"):
+                result["parsed"]["partial"] = True
+                result["timed_out"] = False
         return result
 
     # --- dir mode (default) ---
@@ -302,8 +309,25 @@ def run_ffuf(
         ]
         if extensions:
             cmd += ["-e", extensions]
-        result = _run(cmd, timeout=300)
+        # -maxtime lets ffuf stop cleanly and flush what it has, rather than
+        # being killed by the wrapper's timeout mid-write. Set below the
+        # wrapper timeout so the clean exit happens first.
+        cmd += ["-maxtime", str(FFUF_MAXTIME)]
+        result = _run(cmd, timeout=FFUF_MAXTIME + 30)
+        # Read the output file even on timeout. ffuf writes results as it
+        # goes, so a killed scan has still found things - v0.4.0 discarded
+        # them with the temp directory, and on a live Mr Robot run that threw
+        # away the entire content-enumeration step. A partial answer beats
+        # none, as long as it says it is partial.
         result["parsed"] = parsers.parse_ffuf_json(_read_json_file(outfile))
+        if result.get("timed_out") and result["parsed"].get("results"):
+            result["parsed"]["partial"] = True
+            result["timed_out"] = False
+            result["stderr"] = (
+                f"Scan hit the {FFUF_MAXTIME}s limit and was cut short; the "
+                f"{result['parsed'].get('count', 0)} result(s) below are what it "
+                f"found before stopping, not the complete set."
+            )
     return result
 
 

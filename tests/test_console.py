@@ -107,8 +107,22 @@ def test_command_is_distinct_from_findings(coloured):
 
 
 def test_failed_checks_are_visually_distinct(coloured):
-    assert console.GREEN in console.check(True, "Port scan", "ran")
-    assert console.RED in console.check(False, "Web fingerprint", "never ran")
+    """
+    Pass and miss render as black-on-green and black-on-red badges. Black is
+    unusable as a foreground on a dark terminal but reads well on a colour
+    block, which is the only place this palette uses it.
+    """
+    ok = console.check(True, "Port scan", "ran")
+    miss = console.check(False, "Web fingerprint", "never ran")
+    assert console.ON_GREEN in ok and console.BLACK in ok
+    assert console.ON_RED in miss and console.BLACK in miss
+    assert ok != miss
+
+
+def test_check_marks_are_words_not_only_colour(plain):
+    """Without colour the badge must still say which it is."""
+    assert "PASS" in console.check(True, "x", "y")
+    assert "MISS" in console.check(False, "x", "y")
 
 
 # --------------------------------------------------------------------------- #

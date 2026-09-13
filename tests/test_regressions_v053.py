@@ -187,3 +187,80 @@ def test_agents_check_for_repeats_before_dispatching(name):
     assert "call_log.record" in src
     # the check must precede dispatch, or the tool runs anyway
     assert src.index("call_log.is_repeat") < src.index("dispatch_tool(block.name")
+
+
+# --------------------------------------------------------------------------- #
+# v0.5.4 - partial fuzz results were thrown away
+#
+# From a live Mr Robot run. ffuf hit the wrapper's 300s timeout, and because
+# the output file is read AFTER the process returns and lives in a
+# TemporaryDirectory, everything ffuf had already written was deleted with it.
+# The entire content-enumeration step produced nothing, on a WordPress site
+# whose paths are in the default wordlist.
+#
+# The model recovered by guessing WordPress paths from the page theme, which
+# masked the bug - the run looked like a success.
+# --------------------------------------------------------------------------- #
+def test_partial_results_are_reported_as_partial():
+    parsed = {"results": [{"input": "wp-admin", "status": 301}], "count": 1, "partial": True}
+    view = parsers.compact_for_model("run_ffuf", parsed)
+    assert view["partial"] is True
+    assert "PARTIAL" in view["result"]
+    assert "not the complete set" in view["result"]
+
+
+def test_partial_results_are_still_returned():
+    """A cut-short scan has still found things; discarding them is the bug."""
+    parsed = {"results": [{"input": "wp-login.php", "status": 200}], "count": 1,
+              "partial": True}
+    view = parsers.compact_for_model("run_ffuf", parsed)
+    assert view["count"] == 1
+    assert view["results"][0]["input"] == "wp-login.php"
+
+
+def test_ffuf_bounds_itself_below_the_wrapper_timeout():
+    """
+    -maxtime lets ffuf exit cleanly and flush its file, instead of being killed
+    mid-write. It has to fire before the wrapper's timeout or it is pointless.
+    """
+    from tools import recon as _recon
+    src = (Path(__file__).parent.parent / "tools" / "recon.py").read_text(encoding="utf-8")
+    assert "-maxtime" in src
+    assert "FFUF_MAXTIME + 30" in src
+    assert _recon.FFUF_MAXTIME < _recon.FFUF_MAXTIME + 30
+
+
+def test_output_file_is_read_even_after_a_timeout():
+    src = (Path(__file__).parent.parent / "tools" / "recon.py").read_text(encoding="utf-8")
+    idx = src.index("FFUF_MAXTIME + 30")
+    after = src[idx:idx + 900]
+    assert "_read_json_file(outfile)" in after
+    assert 'result.get("timed_out")' in after
+
+
+# --------------------------------------------------------------------------- #
+# an empty directory scan must say it is suspicious
+# --------------------------------------------------------------------------- #
+def test_empty_directory_scan_is_flagged_as_unusual():
+    """
+    gobuster returned nothing on a live WordPress site. An empty result that
+    might be a scanning failure has to say so - the same lesson as the empty
+    nmap scan, in a different tool.
+    """
+    view = parsers.compact_for_model("run_gobuster", parsers.parse_gobuster(""))
+    assert "NO paths" in view["result"]
+    assert "rate-limiting" in view["result"] or "wordlist" in view["result"]
+
+
+def test_empty_scan_suggests_reading_the_page_instead():
+    """What actually worked on Mr Robot was reading robots.txt and the theme."""
+    view = parsers.compact_for_model("run_ffuf", {"results": [], "count": 0})
+    assert "fetch_page" in view["result"]
+    assert "robots.txt" in view["result"]
+
+
+def test_a_productive_scan_gets_no_such_note():
+    view = parsers.compact_for_model(
+        "run_gobuster", parsers.parse_gobuster("/admin (Status: 301) [Size: 240]\n")
+    )
+    assert "result" not in view
