@@ -1,4 +1,4 @@
-# ai-recon-agent
+# Ai-Recon-Agent
 
 **v0.4.2**
 
