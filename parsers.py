@@ -173,8 +173,25 @@ def compact_for_model(tool_name: str, parsed: dict, budget: int = MODEL_PAYLOAD_
         for script_chars in (MAX_SCRIPT_CHARS, 80, None):
             view = _nmap_view(parsed, script_chars)
             if len(json.dumps(view, default=str)) <= budget:
-                return view
-        return _nmap_view(parsed, None)
+                break
+        else:
+            view = _nmap_view(parsed, None)
+
+        # Say so explicitly when a scan found nothing. An empty list arriving
+        # as an absence is indistinguishable from a broken scan, and a live
+        # session responded to three of them by re-running the same scan three
+        # times. Naming the result gives the model something to reason about
+        # instead of a hole to fill with retries.
+        if not view["open_ports"]:
+            view["result"] = (
+                "SCAN COMPLETED SUCCESSFULLY AND FOUND NO OPEN PORTS. This is a "
+                "real result, not an error, and re-running the same scan will "
+                "return it again. Either the host has nothing listening on those "
+                "ports, or it is unreachable from here - a VPN that is down looks "
+                "exactly like a host with no services. Do not retry the same scan; "
+                "try a different port range once, or report the finding."
+            )
+        return view
 
     if tool_name in {"run_ffuf", "run_gobuster"}:
         results = parsed.get("results", [])

@@ -22,7 +22,7 @@
 # =============================================================================
 
 authorized_targets: 
-   - host: 10.112.129.0
+   - host: 192.168.138.61
      platform: htb
      note: "HTB machine 'Example' - spawned on my own VPN, 2026-08-13"
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.3] - 2026-09-13
+
+A live session looped. nmap returned zero open ports and the model, unable to tell "nothing is listening" from "the scan did not work", retried — five nmap calls, three of them byte-identical, plus an escalation to all 65535 ports that ran the 600-second timeout to its end. Every retry is a full API turn and up to ten minutes of wall clock, and none could have returned anything different.
+
+Added: **`repeats.py`** refuses an identical tool call and tells the model what the earlier one returned. Deterministic, and unlike a prompt instruction it cannot be reasoned around by a model that has decided the scan must be broken. `fetch_page` and `searchsploit_lookup` are exempt — both are cheap, and re-fetching a URL is a legitimate way to check whether something changed.
+
+Changed: **An empty scan now says it is empty.** `SCAN COMPLETED SUCCESSFULLY AND FOUND NO OPEN PORTS ... not an error`, and it names an unreachable host as the other likely cause, since a VPN that is down looks exactly like a host with no services. Refusing repeats alone would have moved the loop elsewhere; the model's real difficulty was that an absence of ports was indistinguishable from a failure.
+
+Tests: 18 new (340 total), including a replay of the exact five-call sequence from the live run.
+
 ## [0.5.2] - 2026-09-13
 
 A live session crashed at the final step, losing the report after every tool had run and been paid for. The model returned `study_pointers` as a list of plain strings where the schema declared objects; the report writer called `.get()` on a `str` and raised.
