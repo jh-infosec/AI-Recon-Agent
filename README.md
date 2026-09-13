@@ -1,6 +1,6 @@
 # ai-recon-agent
 
-**v0.4.8**
+**v0.4.9**
 
 ai-recon-agent is a small security study kit with two halves: a **red-team
 recon agent** for practicing enumeration on machines you're authorized to
@@ -68,10 +68,13 @@ pip install -r requirements.txt
 # 3. Your own Anthropic API key
 export ANTHROPIC_API_KEY=sk-ant-...
 
-# 4. Connect to your HTB/THM VPN and spawn a machine, then:
+# 4. Create your allowlist from the template (first run only)
+cp config/targets.example.yaml config/targets.yaml
+
+# 5. Connect to your HTB/THM VPN and spawn a machine, then:
 #    edit config/targets.yaml and add the target's IP
 
-# 5. Run it
+# 6. Run it
 python agent.py --target 10.10.11.123
 ```
 
@@ -129,6 +132,8 @@ version.py                - single source of the project version
 parsers.py                - raw tool output -> structured objects
 surface.py                - attack surface model + methodology coverage gate
 telemetry.py              - per-turn token counts and cost estimate
+console.py                - coloured output, command echo, finding highlights
+completeness.py           - validates finish-tool payloads
 apiclient.py              - API retry with backoff
 hunt.py                   - BLUE TEAM: threat-hunting loop over logs
 safety.py                 - recon-side allowlist gate
@@ -137,7 +142,7 @@ detections.py             - hunt log-signal -> MITRE ATT&CK lookup
 tools/recon.py            - nmap / whatweb / gobuster / ffuf / dns / searchsploit
 tools/loganalysis.py      - read-only, path-locked log tools
 report.py                 - SessionReport (recon) + HuntReport (blue) -> MD + HTML
-config/targets.yaml       - recon authorized-targets allowlist (edit per session)
+config/targets.example.yaml - template; copy to targets.yaml (gitignored)
 samples/                  - synthetic logs for the hunt agent (safe to run)
 reports/                  - generated reports land here (git-ignored)
 tests/                    - pytest suites: safety gate, workspace lock, regressions
@@ -161,8 +166,7 @@ pip-audit -r requirements.txt   # supply-chain audit
 The same three checks run in CI on every push (`.github/workflows/ci.yml`) -
 the "run it through a CI/CD pipeline and layer in supply-chain scanning"
 habit, applied to keeping *this tool's* codebase clean, not to attacking
-anything. The test suite deliberately concentrates on `safety.py`, since a
-regression there is the one bug that could actually matter.
+anything. The test suite concentrates on the two boundaries - the allowlist gate and the workspace lock - plus a regression test for every defect ever cleared, since a regression in either boundary is the only kind of bug here that could cause harm outside the project.
 
 ## Choosing a model
 
