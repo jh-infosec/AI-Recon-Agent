@@ -1,0 +1,34 @@
+name: CI
+
+# Lints this project's own code, runs its unit tests, and audits its own
+# Python dependencies for known vulnerabilities on every push/PR. This is the
+# "run it through a CI/CD pipeline and layer in supply-chain scanning" habit,
+# applied to keeping THIS TOOL's codebase clean - not to attacking anything.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint-test-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install project + dev dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Run tests
+        run: pytest -q
+
+      - name: Audit dependencies for known CVEs
+        run: pip-audit -r requirements.txt

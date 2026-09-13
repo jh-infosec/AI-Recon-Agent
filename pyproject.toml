@@ -1,0 +1,26 @@
+[project]
+name = "claude-recon-agent"
+version = "0.3.0"
+description = "A small, Claude-orchestrated recon/study agent for authorized targets only."
+requires-python = ">=3.10"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# Pin an explicit, stable ruleset so `ruff check .` behaves the same across
+# ruff versions (its defaults and preview rules drift between releases).
+select = ["E", "F", "I", "UP", "B"]
+ignore = [
+    "E501",  # line length is handled by the formatter, not worth failing CI over
+]
+
+[tool.ruff.lint.per-file-ignores]
+# These modules intentionally manipulate sys.path before importing local
+# modules so the tool works whether run as a script or a package.
+"tools/recon.py" = ["E402"]
+"tests/*.py" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

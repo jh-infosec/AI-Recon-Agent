@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+venv/
+.venv/
+reports/*.md
+reports/*.html
+.ruff_cache/
+.pytest_cache/
+config/targets.yaml

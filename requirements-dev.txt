@@ -1,0 +1,4 @@
+# Dev/CI-only dependencies (not needed to run the agent).
+ruff>=0.6.0
+pip-audit>=2.7.0
+pytest>=8.0.0
