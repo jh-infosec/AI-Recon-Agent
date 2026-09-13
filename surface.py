@@ -25,6 +25,7 @@ followed up at all - which is exactly the question a study tool should ask,
 because the methodology is what is being learned.
 """
 
+import re
 from dataclasses import dataclass, field
 
 # Services that mean "there is a web server here" once nmap has identified
@@ -51,10 +52,53 @@ NON_CONTENT_HTTP_PORTS = {
 # Product strings that identify a management or API endpoint rather than a
 # content-serving web server. Checked case-insensitively as a substring, so a
 # genuine web server that merely mentions one of these is not caught.
+# Matched case-insensitively as a substring against nmap's product string.
+# `dcv` arrives as the PRODUCT on an "https-alt" service, which is why the
+# service-name list below is not sufficient on its own.
 NON_CONTENT_HTTP_PRODUCTS = (
     "microsoft httpapi",
     "microsoft windows rpc",
+    "dcv",
+    "nice dcv",
+    "vnc",
+    "teradici",
+    "pcoip",
 )
+
+# nmap service names that speak TLS/HTTP as a transport for a remote-access or
+# management product rather than serving a site. `dcv` is Amazon DCV, a remote
+# desktop service nmap reports on 8443 as "https-alt"; a live run demanded a
+# directory fuzz against it, which is the WinRM false positive again in a new
+# costume.
+NON_CONTENT_HTTP_SERVICES = {
+    "dcv", "vnc-http", "rdp", "ms-wbt-server", "teradici-pcoip",
+    "vmware-auth", "esxi", "ipmi", "jetdirect",
+}
+
+# Hostnames that are an artefact of where the box is hosted rather than a name
+# the application answers to. Fuzzing virtual hosts against an EC2 internal
+# DNS name finds nothing, because nothing is served under it.
+_INFRA_HOSTNAME_PATTERNS = (
+    re.compile(r"^ip-\d{1,3}-\d{1,3}-\d{1,3}-\d{1,3}$"),          # AWS internal
+    re.compile(r"^ip-\d{1,3}-\d{1,3}-\d{1,3}-\d{1,3}\..*"),
+    re.compile(r"^(ec2|compute)-.*\.amazonaws\.com$"),
+    re.compile(r".*\.internal$"),
+    re.compile(r".*\.compute\.internal$"),
+    re.compile(r"^localhost$"),
+)
+
+
+def is_infrastructure_hostname(name: str) -> bool:
+    """
+    True for a hostname that describes the hosting environment rather than the
+    application - an EC2 private DNS name, a .internal suffix, localhost.
+
+    A discovered hostname normally means "there may be a virtual host here".
+    These never do, and demanding a vhost fuzz against one marks a session
+    incomplete for declining to do something pointless.
+    """
+    low = (name or "").strip().lower().rstrip(".")
+    return any(p.match(low) for p in _INFRA_HOSTNAME_PATTERNS)
 
 
 def is_content_web_service(port: int, service: str, product: str) -> tuple:
@@ -69,16 +113,22 @@ def is_content_web_service(port: int, service: str, product: str) -> tuple:
     candidate, and a row saying it was "correctly excluded from web checks"
     would be noise.
     """
-    looks_web = (service or "") in WEB_SERVICES or port in NON_CONTENT_HTTP_PORTS
+    svc = (service or "").lower()
+    looks_web = svc in WEB_SERVICES or port in NON_CONTENT_HTTP_PORTS
     if not looks_web:
         return False, ""
 
     if port in NON_CONTENT_HTTP_PORTS:
         return False, NON_CONTENT_HTTP_PORTS[port]
+    if svc in NON_CONTENT_HTTP_SERVICES:
+        return False, f"{service} is a remote-access/management service, not a web application"
     low = (product or "").lower()
     for marker in NON_CONTENT_HTTP_PRODUCTS:
         if marker in low:
-            return False, f"{product} is a management API, not a web application"
+            return False, (
+                f"{product} is a remote-access or management service, "
+                f"not a web application"
+            )
     return True, ""
 
 
@@ -247,6 +297,16 @@ def coverage(surface: AttackSurface) -> list:
         )
 
     for host in sorted(surface.hostnames):
+        if is_infrastructure_hostname(host):
+            checks.append(
+                Check(
+                    f"Hostname {host} correctly skipped for vhost fuzzing",
+                    True,
+                    "names the hosting environment, not the application - "
+                    "nothing is served under it",
+                )
+            )
+            continue
         checks.append(
             Check(
                 f"Virtual hosts fuzzed for {host}",

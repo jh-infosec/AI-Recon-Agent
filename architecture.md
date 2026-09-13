@@ -226,6 +226,14 @@ lazy one. It answers only whether each discovered thing was followed up at
 all, which is the question a study tool should ask, because the methodology is
 what is being learned.
 
+This distinction has now been wrong three times, in three different costumes:
+WinRM on 5985 reported as `http`, Amazon DCV on 8443 reported as `https-alt`,
+and an EC2 private DNS name treated as a virtual host worth fuzzing. Each was
+a service or name that speaks the right protocol while serving nothing a
+directory fuzz could find. Expect a fourth; the rule to apply when it appears
+is that the gate must be taught the exception rather than the model taught to
+tolerate a false failure.
+
 It also cannot, by itself, tell "was not done" from "correctly did not apply",
 and that distinction is where it does real damage when it gets it wrong. The
 first live run against a Windows box failed because nmap labels WinRM on 5985

@@ -226,6 +226,15 @@ def highlights(tool_name: str, parsed: dict) -> list:
                 out.append(f"{plugin}: {', '.join(values)[:80]}")
 
     elif tool_name == "fetch_page":
+        # Status first, always. A fetch of /.git/HEAD returning 200 IS the
+        # finding - it is what separates "nmap mentioned a .git directory"
+        # from "the repository is live and readable". On the first live run
+        # this printed only the Server header, because the response was not
+        # HTML so every extractor came back empty and the one fact that
+        # mattered never reached the operator.
+        status = parsed.get("status")
+        if status is not None:
+            out.append(f"HTTP {status} {parsed.get('url', '')}".rstrip())
         if parsed.get("title"):
             out.append(f"title: {parsed['title']}")
         for k, v in (parsed.get("headers") or {}).items():
@@ -242,6 +251,13 @@ def highlights(tool_name: str, parsed: dict) -> list:
             out.append(f"comment: {c_[:100]}")
         if parsed.get("generator"):
             out.append(f"generator: {parsed['generator']}")
+        # Nothing structured came out, so show the start of the body itself.
+        # Config files, .git internals, robots.txt and plain-text endpoints all
+        # land here, and for those the content is the whole point.
+        if parsed.get("preview") and not parsed.get("forms") and not parsed.get("title"):
+            for line in parsed["preview"].splitlines()[:6]:
+                if line.strip():
+                    out.append(f"body: {line.strip()[:120]}")
 
     elif tool_name == "run_dns_enum":
         if parsed.get("axfr_succeeded"):
