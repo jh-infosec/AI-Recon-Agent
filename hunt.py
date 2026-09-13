@@ -323,7 +323,7 @@ def main():
                     # analysis in prose and then called this with an empty
                     # payload, producing a report with a heading and nothing
                     # under it - and an exit code of 0.
-                    payload = completeness.normalise_text(block.input)
+                    payload = completeness.normalise_payload(block.input)
                     ok, reason = completeness.validate_hunt(payload)
                     if not ok and finish_retries < MAX_FINISH_RETRIES:
                         finish_retries += 1
@@ -344,7 +344,12 @@ def main():
                         report.log_incomplete(f"finish_hunt returned an unusable payload: {reason}")
                     else:
                         completed = True
-                        report.log_findings(payload)
+                        try:
+                            report.log_findings(payload)
+                        except Exception as exc:  # noqa: BLE001
+                            print(console.bad(
+                                f"could not render the findings ({type(exc).__name__}: "
+                                f"{exc}); the tool results above are still in the report"))
                         print("\n" + console.agent("hunt", console.c(
                             "Hunt complete.", console.GREEN, console.BOLD)))
                         for f in payload.get("findings", []):
@@ -426,7 +431,15 @@ def main():
         )
         report.log_incomplete(reason)
 
-    report.finalize_note()
+    # Finalisation is the last thing in a session and the most expensive to
+    # lose: every tool has already run and been paid for. A rendering bug must
+    # not throw that away - the incremental Markdown is already on disk.
+    try:
+        report.finalize_note()
+    except Exception as exc:  # noqa: BLE001
+        print(console.bad(
+            f"could not finalise the report ({type(exc).__name__}: {exc}) - "
+            f"the incremental Markdown at {report.path} is still intact"))
     print("\n" + console.agent("hunt", "Done. Reports:"))
     print(console.note(str(report.path)))
     print(console.note(str(report.html_path)))

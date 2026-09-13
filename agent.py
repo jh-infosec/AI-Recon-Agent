@@ -427,7 +427,7 @@ def main():
                 )
 
                 if block.name == "finish_session":
-                    payload = completeness.normalise_text(block.input)
+                    payload = completeness.normalise_payload(block.input)
                     ok, reason = completeness.validate_session(payload)
                     if not ok and finish_retries < MAX_FINISH_RETRIES:
                         finish_retries += 1
@@ -453,7 +453,12 @@ def main():
                         )
                         continue
                     completed = True
-                    report.log_final_summary(payload)
+                    try:
+                        report.log_final_summary(payload)
+                    except Exception as exc:  # noqa: BLE001
+                        print(console.bad(
+                            f"could not render the summary ({type(exc).__name__}: {exc}); "
+                            "the tool results above are still in the report"))
                     print(f"\n[agent] Session complete.\n\n{block.input.get('summary', '')}\n")
                     finished = True
                     tool_results.append(
@@ -576,7 +581,15 @@ def main():
     summary = coverage_summary(checks)
     report.log_coverage(surface.summary(), checks, summary)
     report.log_telemetry(telemetry.summary())
-    report.finalize_note()
+    # Finalisation is the last thing in a session and the most expensive to
+    # lose: every tool has already run and been paid for. A rendering bug must
+    # not throw that away - the incremental Markdown is already on disk.
+    try:
+        report.finalize_note()
+    except Exception as exc:  # noqa: BLE001
+        print(console.bad(
+            f"could not finalise the report ({type(exc).__name__}: {exc}) - "
+            f"the incremental Markdown at {report.path} is still intact"))
 
     cov_colour = console.GREEN if summary["complete"] else console.YELLOW
     print("\n" + console.agent("agent", console.c(

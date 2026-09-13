@@ -135,6 +135,20 @@ All target-derived content is HTML-escaped on the way into the HTML report. A
 service banner is attacker-controlled text and a report is a document someone
 opens in a browser.
 
+### A schema is a request, not a guarantee
+
+Everything arriving from the model is checked at the boundary it crosses.
+That rule was learned on tool arguments - the wordlist path, the web port -
+and it applies just as much to the finish payload: a schema declaring
+`study_pointers` as objects did not stop a model returning strings, and the
+report writer trusted the declaration and died.
+
+So payloads are shape-normalised before anything consumes them, the report
+tolerates the shape rather than trusting it, and finalisation is wrapped. The
+last of those matters most: the report runs after every tool has been paid
+for, which makes it the most expensive thing in the session to lose to a
+crash.
+
 ### The model reasons; it does not decide what is true
 
 Tools produce observations. The model orders them, explains them and decides

@@ -129,8 +129,19 @@ def test_normalisation_is_type_safe():
 
 @pytest.mark.parametrize("name", ["agent.py", "hunt.py"])
 def test_agents_normalise_the_finish_payload(name):
+    """
+    Checks that normalisation happens, not which function does it. The
+    original asserted the literal call `normalise_text(block.input)` and broke
+    in v0.5.2 when that became `normalise_payload`, which does escape repair
+    AND shape coercion - a test failing on a rename rather than a regression.
+    """
     src = (Path(__file__).parent.parent / name).read_text(encoding="utf-8")
-    assert "completeness.normalise_text(block.input)" in src
+    assert "completeness.normalise_payload(block.input)" in src
+
+
+def test_escape_repair_still_happens_via_the_payload_normaliser():
+    payload = completeness.normalise_payload({"summary": "a\\nb"})
+    assert "\n" in payload["summary"]
 
 
 def test_normalised_payload_still_validates():
