@@ -149,6 +149,21 @@ last of those matters most: the report runs after every tool has been paid
 for, which makes it the most expensive thing in the session to lose to a
 crash.
 
+### Scanning a lab box over a VPN is latency-bound and self-limiting
+
+Measured, not assumed: a single request to a live THM box returned in 195ms,
+while a 4614-word fuzz ran at 5-9 requests/sec and the target began erroring
+partway through - 0 errors at 1:44, 122 by 6:50. The server is fine; sustained
+concurrency is what it dislikes.
+
+Three things follow, and they shape the tool rather than just its settings.
+Concurrency stays modest, because more threads made it worse. A full wordlist
+sweep is not expected to finish, so partial results are the normal case and
+must be preserved and labelled. And the productive technique on a box like
+this is not a bigger wordlist but reading the site and requesting the paths
+its own content implies - which is what `fetch_page` is for, and what the
+empty-scan note now tells the model to do.
+
 ### An absence must be stated, not implied
 
 A tool that finds nothing has to say so. An empty list arriving as an absence

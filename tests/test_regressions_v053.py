@@ -264,3 +264,73 @@ def test_a_productive_scan_gets_no_such_note():
         "run_gobuster", parsers.parse_gobuster("/admin (Status: 301) [Size: 240]\n")
     )
     assert "result" not in view
+
+
+# --------------------------------------------------------------------------- #
+# v0.5.5 - concurrency and guidance, from measurement rather than guesswork
+#
+# Tested against the live box rather than assumed. A single request returns in
+# 195ms, so the server is healthy and throughput is latency-bound. But under
+# sustained fuzzing it degrades: 596 words and 0 errors at 1:44, 1786 words and
+# 122 errors at 6:50. More threads make that worse. A 4614-word list at 5-9
+# req/sec needs 8+ minutes, so on a box like this a full sweep will not finish
+# and partial results are the normal case, not the exception.
+# --------------------------------------------------------------------------- #
+def test_fuzzing_concurrency_is_modest():
+    """40 threads pushed a lab box into erroring; the measurement is in the code."""
+    from tools import recon as _recon
+    assert int(_recon.FUZZ_THREADS) <= 20
+    src = (Path(__file__).parent.parent / "tools" / "recon.py").read_text(encoding="utf-8")
+    assert '"-t", "40"' not in src
+    assert '"-t", "20"' not in src
+
+
+def test_all_fuzzers_share_the_thread_setting():
+    src = (Path(__file__).parent.parent / "tools" / "recon.py").read_text(encoding="utf-8")
+    assert src.count("FUZZ_THREADS") >= 4   # definition + gobuster + both ffuf modes
+
+
+def test_partial_note_warns_that_missing_is_not_absent():
+    """
+    Wordlists are alphabetical. A scan cut off at 'a' says nothing about
+    wp-login.php, and the model must not read absence as evidence.
+    """
+    view = parsers.compact_for_model(
+        "run_ffuf", {"results": [{"input": "admin", "status": 301}], "count": 1,
+                     "partial": True})
+    assert "MISSING DOES NOT MEAN ABSENT" in view["result"]
+    assert "alphabet" in view["result"]
+
+
+def test_empty_note_names_rate_limiting_and_a_better_move():
+    view = parsers.compact_for_model("run_gobuster", parsers.parse_gobuster(""))
+    assert "rate-limiting" in view["result"]
+    assert "fetch_page" in view["result"]
+    assert "wp-login.php" in view["result"]
+
+
+def test_notes_reach_the_console_not_just_the_model():
+    """
+    The model got this note in v0.5.4 and the operator did not - an empty scan
+    printed nothing at all, indistinguishable from a crash.
+    """
+    import console
+    view = parsers.compact_for_model("run_gobuster", parsers.parse_gobuster(""))
+    lines = console.highlights("run_gobuster", view)
+    assert lines and lines[0].startswith("!")
+    assert "NO paths" in lines[0]
+
+
+def test_a_note_does_not_displace_real_findings():
+    import console
+    view = parsers.compact_for_model(
+        "run_gobuster", parsers.parse_gobuster("/admin (Status: 301) [Size: 240]\n"))
+    lines = console.highlights("run_gobuster", view)
+    assert not any(x.startswith("!") for x in lines)
+    assert any("/admin" in x for x in lines)
+
+
+def test_agent_renders_notes_as_warnings():
+    src = (Path(__file__).parent.parent / "agent.py").read_text(encoding="utf-8")
+    assert 'line.startswith("!")' in src
+    assert "console.warn(line[1:])" in src

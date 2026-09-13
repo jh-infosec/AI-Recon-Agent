@@ -212,9 +212,15 @@ def compact_for_model(tool_name: str, parsed: dict, budget: int = MODEL_PAYLOAD_
         if parsed.get("partial"):
             view["partial"] = True
             view["result"] = (
-                "PARTIAL: the scan was cut short by its time limit, so this is "
-                "what it found before stopping and not the complete set. Missing "
-                "paths do not mean absent paths."
+                "PARTIAL: the scan hit its time limit and these are the paths it "
+                "reached, not the complete set - MISSING DOES NOT MEAN ABSENT. "
+                "Wordlists are alphabetical, so anything late in the alphabet was "
+                "probably never tried. Measured on a lab box over a VPN, a "
+                "4600-word list runs at roughly 5-9 requests/sec and takes 8+ "
+                "minutes, and targets often start erroring partway through. Do "
+                "not re-run the same scan hoping for more. Either fetch specific "
+                "paths you have reason to suspect, or run a smaller, targeted "
+                "wordlist."
             )
         elif not results:
             # Same reasoning as the empty nmap result: an absence that might be
@@ -223,13 +229,17 @@ def compact_for_model(tool_name: str, parsed: dict, budget: int = MODEL_PAYLOAD_
             # returned nothing on a site that plainly had content, and the
             # empty result was indistinguishable from "no hidden paths exist".
             view["result"] = (
-                "This scan found NO paths at all. On a web server that is "
-                "serving pages, that is unusual and is more often a scanning "
-                "problem than an empty site: the wordlist may not suit this "
-                "application, or the server may be rate-limiting, rewriting, or "
-                "answering uniformly. Do not re-run the same scan. Read the "
-                "homepage and robots.txt with fetch_page and try paths the "
-                "content itself suggests."
+                "This scan found NO paths at all. On a web server that is serving "
+                "pages, that is unusual and is more often a scanning problem than "
+                "an empty site: the server may be rate-limiting (lab boxes "
+                "commonly start dropping requests under sustained fuzzing), "
+                "rewriting URLs, or the wordlist may not suit this application. "
+                "Do not re-run the same scan. The productive move is to READ the "
+                "site and follow what it tells you: fetch_page on / and "
+                "/robots.txt, then request the specific paths the content, the "
+                "page comments, or the technology stack imply. On a WordPress "
+                "site that means /wp-login.php and similar, guessed directly "
+                "rather than brute-forced."
             )
         return view
 

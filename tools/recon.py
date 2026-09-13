@@ -51,6 +51,15 @@ MAX_OUTPUT_CHARS = 20000
 # ffuf stops itself at this point and flushes its output file; the wrapper
 # timeout sits above it so the clean exit wins.
 FFUF_MAXTIME = 240
+
+# Threads. Measured against a live THM box over a 172ms VPN: a single request
+# returns in 195ms, so throughput is latency-bound rather than server-bound -
+# but the target began erroring under sustained load (0 errors at 1:44, 122 by
+# 6:50) while throughput fell. More concurrency makes that worse, not better.
+# Lab boxes are small and often rate-limited, so the default is modest and the
+# expectation is that a full wordlist may not finish; see FFUF_MAXTIME and the
+# partial-result handling.
+FUZZ_THREADS = "10"
 DEFAULT_TIMEOUT = 300  # seconds
 DEFAULT_WORDLIST = "/usr/share/wordlists/dirb/common.txt"
 # Common on Kali/Parrot via the seclists package - used for vhost/subdomain fuzzing.
@@ -200,7 +209,7 @@ def run_gobuster(
     binary = _require_binary("gobuster", "gobuster")
     scheme = "https" if https else "http"
     url = f"{scheme}://{target}:{port}{base}"
-    cmd = [binary, "dir", "-u", url, "-w", str(wl), "-q", "-t", "20"]
+    cmd = [binary, "dir", "-u", url, "-w", str(wl), "-q", "-t", FUZZ_THREADS]
 
     result = _run(cmd, timeout=300)
     result["parsed"] = parsers.parse_gobuster(result.get("stdout", ""))
@@ -273,7 +282,7 @@ def run_ffuf(
                 "-u", url,
                 "-H", host_header,
                 "-ac",       # autocalibrate to drop the boilerplate wildcard response
-                "-t", "40",
+                "-t", FUZZ_THREADS,
                 "-noninteractive",
                 "-of", "json", "-o", str(outfile),
             ]
@@ -303,7 +312,7 @@ def run_ffuf(
             "-w", f"{wl}:FUZZ",
             "-u", url,
             "-mc", "200,204,301,302,307,401,403,405",
-            "-t", "40",
+            "-t", FUZZ_THREADS,
             "-noninteractive",
             "-of", "json", "-o", str(outfile),
         ]
