@@ -209,14 +209,20 @@ def test_long_lines_are_truncated_before_matching(tmp_path):
     assert "(no matches)" in r["stdout"]
 
 
-def test_catastrophic_pattern_completes_quickly(tmp_path):
-    import time
+def test_catastrophic_pattern_is_refused(tmp_path):
+    """
+    Superseded in v0.3.2. This test previously ran `(a+)+$` against a string
+    of all `a` and asserted it completed quickly - which it did, because that
+    match SUCCEEDS and returns immediately. Catastrophic backtracking only
+    happens when a match fails, so the test passed while the defect was open
+    and gave a false assurance that truncation had fixed ReDoS. It had not.
+    The pattern is now refused outright; see tests/test_regressions_v032.py
+    for the failing-match case.
+    """
     p = tmp_path / "big.log"
-    p.write_text("a" * 50_000 + "\n")
-    start = time.monotonic()
-    la.search(str(tmp_path), "big.log", r"(a+)+$")
-    # Bounded input keeps this tractable; unbounded it would not return.
-    assert time.monotonic() - start < 20
+    p.write_text("a" * 5000 + "\n")
+    r = la.search(str(tmp_path), "big.log", r"(a+)+$")
+    assert r["returncode"] == 2
 
 
 # --------------------------------------------------------------------------- #
