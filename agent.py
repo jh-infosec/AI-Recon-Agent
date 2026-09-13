@@ -39,11 +39,22 @@ import sys
 
 import anthropic
 
+import parsers
+from apiclient import call_with_retry
 from knowledge import format_for_prompt
 from report import SessionReport
 from safety import NotAuthorizedError, assert_authorized
+from surface import AttackSurface, coverage, coverage_summary
+from telemetry import Telemetry
 from tools import recon
-from version import __version__  # noqa: F401
+from version import __version__
+
+# Exit codes. 0 means the methodology was completed; 3 means the session ran
+# but the coverage gate found gaps, which is a distinct outcome from a crash
+# and lets a harness tell "incomplete" from "broken".
+EXIT_OK = 0
+EXIT_ERROR = 1
+EXIT_INCOMPLETE = 3
 
 # Sonnet 5 is the sweet spot here: frontier agentic/tool-use quality at
 # Sonnet pricing, which matters because each session fires many tool-use
@@ -275,6 +286,8 @@ def main():
 
     client = anthropic.Anthropic(api_key=api_key)
     report = SessionReport(args.target, meta["platform"], meta["note"])
+    surface = AttackSurface()
+    telemetry = Telemetry(MODEL)
 
     print(f"[agent] v{__version__} - target {args.target} authorized ({meta['platform']}). Starting...")
     print(f"[agent] Reports: {report.path}  |  {report.html_path}")
@@ -289,13 +302,26 @@ def main():
     ]
 
     for _turn in range(MAX_TURNS):
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=2048,
-            system=SYSTEM_PROMPT,
-            tools=TOOLS,
-            messages=messages,
-        )
+        def _create(msgs=messages):
+            return client.messages.create(
+                model=MODEL,
+                max_tokens=2048,
+                system=SYSTEM_PROMPT,
+                tools=TOOLS,
+                messages=msgs,
+            )
+
+        def _note_retry(attempt, delay, exc):
+            print(f"[agent] {type(exc).__name__} - retry {attempt} in {delay:.1f}s")
+
+        try:
+            response = call_with_retry(_create, on_retry=_note_retry)
+        except Exception as e:  # noqa: BLE001
+            print(f"[agent] API call failed after retries: {type(e).__name__}: {e}")
+            report.log_analysis(f"Session aborted: API call failed ({type(e).__name__}).")
+            break
+
+        telemetry.record(getattr(response, "usage", None))
 
         assistant_content = []
         tool_results = []
@@ -338,18 +364,36 @@ def main():
                     }
 
                 report.log_tool_call(block.name, block.input, result)
+                surface.ingest(block.name, block.input, result.get("parsed"))
+
+                # Prefer the structured object over raw text. Truncated ASCII
+                # cost tokens and lost information exactly where the model
+                # needed it; a parsed result is smaller AND complete. Raw
+                # stdout is kept as a short tail only when parsing failed or
+                # produced nothing, so a format surprise degrades rather than
+                # blinding the model. The full output always survives in the
+                # report either way.
+                parsed = result.get("parsed")
+                payload = {
+                    "returncode": result.get("returncode"),
+                    "timed_out": result.get("timed_out"),
+                }
+                if parsed and not parsed.get("parse_error"):
+                    # Compact for the prompt only; the report keeps everything.
+                    payload["parsed"] = parsers.compact_for_model(block.name, parsed)
+                    if result.get("stderr"):
+                        payload["stderr"] = (result.get("stderr") or "")[:500]
+                else:
+                    if parsed and parsed.get("parse_error"):
+                        payload["parse_error"] = parsed["parse_error"]
+                    payload["stdout"] = (result.get("stdout") or "")[:4000]
+                    payload["stderr"] = (result.get("stderr") or "")[:1000]
+
                 tool_results.append(
                     {
                         "type": "tool_result",
                         "tool_use_id": block.id,
-                        "content": json.dumps(
-                            {
-                                "returncode": result.get("returncode"),
-                                "stdout": (result.get("stdout") or "")[:4000],
-                                "stderr": (result.get("stderr") or "")[:1000],
-                                "timed_out": result.get("timed_out"),
-                            }
-                        ),
+                        "content": json.dumps(payload, default=str),
                     }
                 )
 
@@ -364,8 +408,31 @@ def main():
             # Claude stopped talking without calling finish_session - end gracefully.
             break
 
+    # --- coverage gate -----------------------------------------------------
+    # Deterministic, and deliberately not a second model pass: the failure
+    # being caught is a model declaring completion it did not reach, and
+    # asking a model to check that is asking the faculty that just failed.
+    checks = coverage(surface)
+    summary = coverage_summary(checks)
+    report.log_coverage(surface.summary(), checks, summary)
+    report.log_telemetry(telemetry.summary())
     report.finalize_note()
+
+    print(f"\n[agent] Coverage: {summary['satisfied']}/{summary['total']} checks satisfied.")
+    for c in checks:
+        print(f"  [{'x' if c.satisfied else ' '}] {c.name} - {c.detail}")
+
+    t = telemetry.summary()
+    print(
+        f"\n[agent] {t['turns']} turns, {t['input_tokens']} in / {t['output_tokens']} out "
+        f"tokens, estimated ${t['estimated_cost_usd']:.4f} "
+        f"(estimate - verify at https://www.anthropic.com/pricing)"
+    )
     print(f"\n[agent] Done. Reports:\n  {report.path}\n  {report.html_path}")
+
+    if not summary["complete"]:
+        print(f"[agent] Methodology incomplete: {', '.join(summary['missed'])}")
+        sys.exit(EXIT_INCOMPLETE)
 
 
 if __name__ == "__main__":

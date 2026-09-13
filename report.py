@@ -64,6 +64,8 @@ class SessionReport:
         self._steps = 0
         self._events: list[dict] = []   # ordered timeline for the HTML render
         self._summary: dict | None = None
+        self._coverage: dict | None = None
+        self._telemetry: dict | None = None
 
         self._write(
             f"# Recon session: {target}\n\n"
@@ -160,6 +162,47 @@ class SessionReport:
                         f"| {p.get('module', '')} | {p.get('cve', '')} |\n"
                     )
                 f.write("\n")
+
+    def log_coverage(self, surface: dict, checks: list, summary: dict):
+        """
+        Record the methodology coverage table. This is the deterministic
+        check that every discovered thing was followed up - see surface.py
+        for why it is code rather than a second model pass.
+        """
+        self._coverage = {"surface": surface, "checks": checks, "summary": summary}
+        with open(self.path, "a", encoding="utf-8") as f:
+            f.write("## Methodology coverage\n\n")
+            f.write(
+                f"{summary['satisfied']} of {summary['total']} checks satisfied"
+                + ("." if summary["complete"] else " - **incomplete**.")
+                + "\n\n"
+            )
+            f.write("| | Check | Detail |\n|---|---|---|\n")
+            for c in checks:
+                mark = "PASS" if c.satisfied else "MISS"
+                f.write(f"| {mark} | {c.name} | {c.detail} |\n")
+            f.write("\n### Attack surface discovered\n\n")
+            f.write(f"- Open ports: {surface.get('open_ports') or 'none'}\n")
+            for port, svc in (surface.get("services") or {}).items():
+                f.write(f"  - {port}: {svc}\n")
+            f.write(f"- Web ports: {surface.get('web_ports') or 'none'}\n")
+            f.write(f"- Hostnames: {surface.get('hostnames') or 'none'}\n")
+            f.write(f"- DNS exposed: {surface.get('dns_open')}\n\n")
+
+    def log_telemetry(self, t: dict):
+        """Record token usage and the estimated cost of the session."""
+        self._telemetry = t
+        with open(self.path, "a", encoding="utf-8") as f:
+            f.write("## Session cost\n\n")
+            f.write(
+                f"- Model: {t['model']}\n"
+                f"- Turns: {t['turns']}\n"
+                f"- Input tokens: {t['input_tokens']}\n"
+                f"- Output tokens: {t['output_tokens']}\n"
+                f"- Estimated cost: ${t['estimated_cost_usd']:.4f} "
+                f"(estimate only - rates change; verify at "
+                f"https://www.anthropic.com/pricing)\n\n"
+            )
 
     def finalize_note(self):
         self.ended_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -263,6 +306,51 @@ class SessionReport:
                 parts.append("</tbody></table>")
             parts.append("</section>")
 
+        if self._coverage:
+            cov = self._coverage
+            sm = cov["summary"]
+            cls = "ok" if sm["complete"] else "warn"
+            parts.append("<section class='summary'><h2>Methodology coverage</h2>")
+            parts.append(
+                f"<p class='cov-{cls}'>{sm['satisfied']} of {sm['total']} checks satisfied"
+                + ("." if sm["complete"] else " &mdash; incomplete.")
+                + "</p>"
+            )
+            parts.append("<table><thead><tr><th></th><th>Check</th><th>Detail</th>"
+                         "</tr></thead><tbody>")
+            for c in cov["checks"]:
+                badge = "sev-low" if c.satisfied else "sev-high"
+                label = "pass" if c.satisfied else "miss"
+                parts.append(
+                    f"<tr><td><span class='sev {badge}'>{label}</span></td>"
+                    f"<td>{e(str(c.name))}</td><td>{e(str(c.detail))}</td></tr>"
+                )
+            parts.append("</tbody></table>")
+
+            surf = cov["surface"]
+            parts.append("<h3>Attack surface discovered</h3><ul>")
+            parts.append(f"<li>Open ports: {e(str(surf.get('open_ports') or 'none'))}</li>")
+            for port, svc in (surf.get("services") or {}).items():
+                parts.append(f"<li>{e(str(port))}: {e(str(svc))}</li>")
+            parts.append(f"<li>Web ports: {e(str(surf.get('web_ports') or 'none'))}</li>")
+            parts.append(f"<li>Hostnames: {e(str(surf.get('hostnames') or 'none'))}</li>")
+            parts.append(f"<li>DNS exposed: {e(str(surf.get('dns_open')))}</li>")
+            parts.append("</ul></section>")
+
+        if self._telemetry:
+            t = self._telemetry
+            parts.append(
+                "<section class='summary'><h2>Session cost</h2><table><tbody>"
+                f"<tr><th>Model</th><td>{e(str(t['model']))}</td></tr>"
+                f"<tr><th>Turns</th><td>{t['turns']}</td></tr>"
+                f"<tr><th>Input tokens</th><td>{t['input_tokens']:,}</td></tr>"
+                f"<tr><th>Output tokens</th><td>{t['output_tokens']:,}</td></tr>"
+                f"<tr><th>Estimated cost</th><td>${t['estimated_cost_usd']:.4f}</td></tr>"
+                "</tbody></table>"
+                "<p class='disclaimer'>Cost is an estimate from a local price table "
+                "and rates change. Verify against anthropic.com/pricing.</p></section>"
+            )
+
         parts.append(
             f"<footer>Generated by claude-recon-agent v{__version__} - a study tool for "
             "authorized targets only.</footer>"
@@ -324,6 +412,8 @@ th{color:var(--muted);font-weight:600}
 .sev-medium{background:#43401a;color:#e6d24a}
 .sev-low{background:#173a2c;color:#5bd6a1}
 .sev-info{background:#1d222b;color:#9aa4b2}
+.cov-ok{color:var(--good)}
+.cov-warn{color:var(--warn)}
 footer{margin-top:32px;color:var(--muted);font-size:12px;text-align:center}
 </style>"""
 

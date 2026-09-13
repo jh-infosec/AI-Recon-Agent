@@ -167,6 +167,44 @@ lowercase substrings matched against tool output.
 Log signal to ATT&CK technique, with the investigative next step. The
 defensive counterpart to `knowledge.py`.
 
+### parsers.py
+
+Turns raw tool output into structured objects: nmap XML, ffuf JSON, whatweb
+JSON, gobuster text, dig text. Every parser is total - it returns a dict with
+`parse_error` set rather than raising, because a format surprise from a tool
+whose output changes between versions must degrade the session rather than end
+it.
+
+`compact_for_model` renders a parsed result down to a payload budget by
+degrading detail progressively. It never drops an item: a port is what the
+model and the coverage gate both reason from, and a banner is not.
+
+### surface.py
+
+`AttackSurface` accumulates what was discovered and what was done about it;
+`coverage()` compares the two and returns a list of checks. Deterministic, and
+deliberately not a second model pass - the failure being caught is a model
+declaring completion it did not reach, and asking a model to check that is
+asking the faculty that just failed.
+
+The gate does not judge quality. It cannot tell a thorough enumeration from a
+lazy one. It answers only whether each discovered thing was followed up at
+all, which is the question a study tool should ask, because the methodology is
+what is being learned.
+
+### telemetry.py
+
+Per-turn token counts and an estimated session cost. Prices are a local table
+that defaults to the standard (higher) rates rather than promotional ones, so
+an estimate errs toward over-reporting a bill.
+
+### apiclient.py
+
+Retry with exponential backoff and full jitter, honouring `Retry-After`. Only
+transient failures are retried; a 400 fails identically on the fifth attempt.
+A recon session is a chain of dependent turns, so one transient error costs
+the whole session rather than one call - that asymmetry is why this exists.
+
 ### report.py
 
 `SessionReport` and `HuntReport`, both rendering Markdown and self-contained
@@ -218,19 +256,6 @@ v0.3.1 and have moved to "Cleared Defects" at the end of this section, where
 they are kept as a record of what the code once did and what test now holds
 it. What remains below is limitation rather than defect.
 
-### Tool output is truncated before the model sees it
-
-Results are cut to 4000 characters of stdout. An `nmap -sV -sC` against a host
-with many services exceeds this comfortably. The full output survives in the
-report, so the loss is invisible to the operator and visible only in the
-quality of the reasoning.
-
-### An incomplete session is indistinguishable from a complete one
-
-Hitting `MAX_TURNS` without `finish_session` breaks the loop, finalises the
-report, and exits zero. Nothing records that the methodology was not
-completed.
-
 ### No state between runs
 
 Every invocation starts from nothing. Running recon, doing manual work, and
@@ -269,10 +294,12 @@ comes from a model rather than an attacker, and the failure is a hung local
 session rather than a boundary crossing. If the hunt side ever ingests
 patterns from anywhere else, this stops being acceptable.
 
-### Cost is unbounded and unreported
+### Cost is reported but still unbounded
 
-Each turn is an API call against the operator's own key. Nothing tracks or
-reports token spend, and nothing stops a long session on a busy host.
+`telemetry.py` reports tokens and an estimated cost per session, so a long run
+is no longer a surprise after the fact. Nothing caps spend mid-session;
+`MAX_TURNS` remains the only bound. The price table is a local estimate that
+will go stale - see the module docstring.
 
 ### The VPN is not managed
 
@@ -377,28 +404,6 @@ checked against, and so the reasoning survives the gap between deciding and
 building. When one ships, its section moves up into the body of this document
 and stops being provisional.
 
-### Structured tool output
-
-Parse `nmap -oX -` and `ffuf -of json` and hand the model objects rather than
-text. Truncation stops losing information, token cost falls because ASCII
-decoration is no longer paid for every turn, and a coverage gate becomes
-possible because the output is countable.
-
-This is the change that unblocks most of the rest, and it should land before
-the gate rather than alongside it.
-
-### Methodology coverage gate
-
-After the loop, compare recorded tool calls against the discovered attack
-surface: every open web port should have a fingerprint and a content
-enumeration, port 53 should have a DNS attempt, a discovered hostname should
-have a vhost fuzz. Emit a coverage table into the report and set a distinct
-exit code when coverage is incomplete.
-
-Deterministic and written in Python. The failure being caught is a model
-declaring completion it did not reach, and asking a model to check that is
-asking the same faculty that failed.
-
 ### Per-target state
 
 `state/<target>.json` holding discovered ports, services, hostnames, paths and
@@ -426,6 +431,7 @@ The following files are part of the project structure and must be preserved:
 ```
 agent.py            hunt.py             safety.py
 version.py          knowledge.py        detections.py       report.py
+parsers.py          surface.py          telemetry.py        apiclient.py
 tools/recon.py      tools/loganalysis.py
 config/targets.yaml samples/
 requirements.txt    requirements-dev.txt

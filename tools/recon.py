@@ -26,9 +26,11 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+import parsers  # noqa: E402
 from safety import (
     NotAuthorizedError,
     assert_authorized,
@@ -106,6 +108,15 @@ def _refused_wordlist_result(command: str, error: Exception) -> dict:
     }
 
 
+
+def _read_json_file(path: Path) -> str:
+    """Read a tool's JSON output file, tolerating absence."""
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
 def run_nmap(target: str, ports: str = "top1000") -> dict:
     """
     Service/version scan. `ports` is either "top1000" (default,
@@ -115,14 +126,18 @@ def run_nmap(target: str, ports: str = "top1000") -> dict:
     ports = validate_ports(ports)
     binary = _require_binary("nmap", "nmap")
 
-    cmd = [binary, "-sV", "-sC", "-Pn"]
+    # -oX - emits XML on stdout. v0.4.0 parses this rather than handing the
+    # model truncated human-readable output; see parsers.parse_nmap_xml.
+    cmd = [binary, "-sV", "-sC", "-Pn", "-oX", "-"]
     if ports == "top1000":
         cmd += ["--top-ports", "1000"]
     else:
         cmd += ["-p", ports]
     cmd.append(target)
 
-    return _run(cmd, timeout=600)
+    result = _run(cmd, timeout=600)
+    result["parsed"] = parsers.parse_nmap_xml(result.get("stdout", ""))
+    return result
 
 
 def run_whatweb(target: str, port: int = 80, https: bool = False) -> dict:
@@ -133,9 +148,13 @@ def run_whatweb(target: str, port: int = 80, https: bool = False) -> dict:
 
     scheme = "https" if https else "http"
     url = f"{scheme}://{target}:{port}"
-    cmd = [binary, "-a", "3", url]
 
-    return _run(cmd, timeout=120)
+    with tempfile.TemporaryDirectory() as td:
+        logfile = Path(td) / "whatweb.json"
+        cmd = [binary, "-a", "3", f"--log-json={logfile}", url]
+        result = _run(cmd, timeout=120)
+        result["parsed"] = parsers.parse_whatweb_json(_read_json_file(logfile))
+    return result
 
 
 def run_gobuster(
@@ -157,7 +176,9 @@ def run_gobuster(
     url = f"{scheme}://{target}:{port}"
     cmd = [binary, "dir", "-u", url, "-w", str(wl), "-q", "-t", "20"]
 
-    return _run(cmd, timeout=300)
+    result = _run(cmd, timeout=300)
+    result["parsed"] = parsers.parse_gobuster(result.get("stdout", ""))
+    return result
 
 
 def run_ffuf(
@@ -216,16 +237,21 @@ def run_ffuf(
         binary = _require_binary("ffuf", "ffuf")
         url = f"{scheme}://{target}:{port}/"
         host_header = f"Host: FUZZ.{domain}"
-        cmd = [
-            binary,
-            "-w", f"{wl}:FUZZ",
-            "-u", url,
-            "-H", host_header,
-            "-ac",           # autocalibrate to drop the boilerplate wildcard response
-            "-t", "40",
-            "-noninteractive",
-        ]
-        return _run(cmd, timeout=300)
+        with tempfile.TemporaryDirectory() as td:
+            outfile = Path(td) / "ffuf.json"
+            cmd = [
+                binary,
+                "-w", f"{wl}:FUZZ",
+                "-u", url,
+                "-H", host_header,
+                "-ac",       # autocalibrate to drop the boilerplate wildcard response
+                "-t", "40",
+                "-noninteractive",
+                "-of", "json", "-o", str(outfile),
+            ]
+            result = _run(cmd, timeout=300)
+            result["parsed"] = parsers.parse_ffuf_json(_read_json_file(outfile))
+        return result
 
     # --- dir mode (default) ---
     extensions = validate_extensions(extensions)
@@ -236,18 +262,22 @@ def run_ffuf(
 
     binary = _require_binary("ffuf", "ffuf")
     url = f"{scheme}://{target}:{port}/FUZZ"
-    cmd = [
-        binary,
-        "-w", f"{wl}:FUZZ",
-        "-u", url,
-        "-mc", "200,204,301,302,307,401,403,405",
-        "-t", "40",
-        "-noninteractive",
-    ]
-    if extensions:
-        cmd += ["-e", extensions]
-
-    return _run(cmd, timeout=300)
+    with tempfile.TemporaryDirectory() as td:
+        outfile = Path(td) / "ffuf.json"
+        cmd = [
+            binary,
+            "-w", f"{wl}:FUZZ",
+            "-u", url,
+            "-mc", "200,204,301,302,307,401,403,405",
+            "-t", "40",
+            "-noninteractive",
+            "-of", "json", "-o", str(outfile),
+        ]
+        if extensions:
+            cmd += ["-e", extensions]
+        result = _run(cmd, timeout=300)
+        result["parsed"] = parsers.parse_ffuf_json(_read_json_file(outfile))
+    return result
 
 
 def run_dns_enum(target: str, domain: str = "") -> dict:
@@ -301,12 +331,14 @@ def run_dns_enum(target: str, domain: str = "") -> dict:
             "pass it as `domain` to attempt a zone transfer and record lookups.",
         )
 
+    body = "\n\n".join(combined_stdout)
     return {
         "command": " ; ".join(sections) if sections else "dig (dns enum)",
         "returncode": rc_final,
-        "stdout": "\n\n".join(combined_stdout)[-20000:],
+        "stdout": body[-20000:],
         "stderr": "\n".join(combined_stderr)[-4000:],
         "timed_out": False,
+        "parsed": parsers.parse_dig(body),
     }
 
 

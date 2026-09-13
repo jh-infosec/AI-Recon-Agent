@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.0] - 2026-09-04
+
+The model now sees what the tools actually found, and a deterministic gate checks the methodology against it.
+
+Added: **Structured tool output** — `nmap -oX -`, `ffuf -of json` and `whatweb --log-json` are parsed into objects (`parsers.py`) instead of the model receiving 4000 characters of truncated text. Payloads degrade progressively under a budget, dropping script detail before ever dropping a port. **Methodology coverage gate** (`surface.py`) — accumulates the attack surface from parsed results and checks every open web port was fingerprinted and enumerated, DNS was enumerated if exposed, and each discovered hostname was vhost-fuzzed; renders a coverage table into both reports and exits 3 when incomplete. Deterministic Python, not a second model pass, since the failure it catches is a model overstating its own completeness. **Token and cost telemetry** (`telemetry.py`) per turn, totalled in the report. **API retry with backoff** (`apiclient.py`) — jittered, honours Retry-After, retries only transient failures.
+
+Also: TLS certificate common names are harvested from nmap's `ssl-cert` script into the hostname set, so a cert that leaks an internal name feeds vhost fuzzing automatically.
+
+Tests: 42 new (160 total).
+
 ## [0.3.2] - 2026-08-29
 
 Containment fixes from an external review of v0.3.1, ahead of v0.4.0 — the coverage gate makes the agent more autonomous, so the boundary should be airtight first. No new capability; regression tests written to fail against v0.3.1 first.

@@ -1,6 +1,6 @@
 # claude-recon-agent
 
-**v0.3.2**
+**v0.4.0**
 
 A small, Claude-orchestrated security study kit with two halves: a **red-team
 recon agent** for practicing enumeration on machines you're authorized to
@@ -126,6 +126,10 @@ then compare against the agent's findings (see `samples/README.md`).
 ```
 agent.py                  - RED TEAM: recon loop (Claude + tool-use)
 version.py                - single source of the project version
+parsers.py                - raw tool output -> structured objects
+surface.py                - attack surface model + methodology coverage gate
+telemetry.py              - per-turn token counts and cost estimate
+apiclient.py              - API retry with backoff
 hunt.py                   - BLUE TEAM: threat-hunting loop over logs
 safety.py                 - recon-side allowlist gate
 knowledge.py              - recon finding -> MITRE ATT&CK -> HTB Academy lookup
@@ -150,7 +154,7 @@ architecture.md           - design principles, constraints, cleared defects
 ```bash
 pip install -r requirements-dev.txt
 ruff check .      # lint
-pytest -q         # run the full suite (118 tests)
+pytest -q         # run the full suite (160 tests)
 pip-audit -r requirements.txt   # supply-chain audit
 ```
 
@@ -167,6 +171,14 @@ tool-use quality and cost, which matters because each session fires many
 tool-use turns. Swap to `claude-opus-5` for heavier reasoning per step if
 you don't mind the cost. Verify current model IDs at
 https://docs.claude.com/en/docs/about-claude/models/overview
+
+## Exit codes
+
+`agent.py` exits `0` when the methodology coverage gate is satisfied, `3` when
+the session ran but left gaps (a web port never fingerprinted, a discovered
+hostname never fuzzed), and `1` on error. The distinct code exists so a harness
+can tell "incomplete" from "broken" - and so you notice when the agent declared
+itself finished before it was.
 
 ## Roadmap
 
