@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1] - 2026-09-04
+
+Changed: Project renamed to **ai-recon-agent** (from claude-recon-agent), matching the repository. `--version` now reports `ai-recon-agent` / `ai-hunt-agent`, and report footers follow.
+
+Fixed: Reports render parsed tool output as readable tables again. v0.4.0 switched nmap to `-oX -`, which made stdout XML, and the report writes stdout verbatim — so the study artifact showed raw XML where v0.3.2 showed nmap's readable table. Structuring output for the model should not cost the operator legibility. Raw output is kept beneath each table in a collapsed block, so nothing is lost and a parser bug stays diagnosable. Rendered values are HTML-escaped, same as everything else target-derived.
+
+Tests: 5 new (165 total).
+
 ## [0.4.0] - 2026-09-04
 
 The model now sees what the tools actually found, and a deterministic gate checks the methodology against it.

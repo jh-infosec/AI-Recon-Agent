@@ -270,7 +270,7 @@ def main():
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--target", required=True, help="Host/IP from config/targets.yaml")
-    parser.add_argument("--version", action="version", version=f"claude-recon-agent {__version__}")
+    parser.add_argument("--version", action="version", version=f"ai-recon-agent {__version__}")
     args = parser.parse_args()
 
     try:

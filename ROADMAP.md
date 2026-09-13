@@ -1,4 +1,4 @@
-# claude-recon-agent Roadmap
+# ai-recon-agent Roadmap
 
 Shipped versions are described in `CHANGELOG.md`. Design reasoning for
 anything below lives in `architecture.md` under "Accepted Designs", and the
