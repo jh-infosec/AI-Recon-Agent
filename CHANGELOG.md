@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.2] - 2026-09-11
+
+Found by running the hunt agent against real logs for the first time. A detailed analysis turn hit the 2048-token ceiling and was cut off mid-word, so `stop_reason` was `max_tokens` rather than `tool_use`, and the loop treated a truncated sentence as a decision to stop — ending before `finish_hunt` was ever called. The report looked ordinary and silently contained no findings, no IOCs and no next steps.
+
+Fixed: `max_tokens` raised to 4096. A `max_tokens` stop now continues the turn instead of ending the session, bounded by `MAX_CONTINUATIONS`. A session that never calls its finish tool now says so in both reports and exits 3 — the blue-side equivalent of the red side's coverage gate, closing the "an incomplete session is indistinguishable from a complete one" gap on the hunt half. Both agents affected; both fixed.
+
+Tests: 11 new (176 total), verified to fail against v0.4.1.
+
 ## [0.4.1] - 2026-09-04
 
 Changed: Project renamed to **ai-recon-agent** (from claude-recon-agent), matching the repository. `--version` now reports `ai-recon-agent` / `ai-hunt-agent`, and report footers follow.

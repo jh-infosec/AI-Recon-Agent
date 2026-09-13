@@ -66,6 +66,7 @@ class SessionReport:
         self._events: list[dict] = []   # ordered timeline for the HTML render
         self._summary: dict | None = None
         self._coverage: dict | None = None
+        self._incomplete: str | None = None
         self._telemetry: dict | None = None
 
         self._write(
@@ -221,6 +222,28 @@ class SessionReport:
                 f"https://www.anthropic.com/pricing)\n\n"
             )
 
+    def log_incomplete(self, reason: str):
+        """
+        Record that the session ended without the model calling its finish
+        tool, so the report says so rather than simply lacking a conclusion.
+
+        A report missing its findings section looks much like one whose
+        findings were thin. This is the same failure the red side's coverage
+        gate exists to catch - an incomplete run being indistinguishable from
+        a complete one - and it happened here for a duller reason: a turn hit
+        the token ceiling mid-sentence and the loop read that as a decision to
+        stop.
+        """
+        self._incomplete = reason
+        with open(self.path, "a", encoding="utf-8") as f:
+            f.write("## Session incomplete\n\n")
+            f.write(
+                f"**This session ended without a structured conclusion: {reason}**\n\n"
+                "The timeline above is what was gathered, but the findings, "
+                "indicators and next steps were never produced. Treat this as a "
+                "partial result, not a clean one.\n\n"
+            )
+
     def finalize_note(self):
         self.ended_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
         with open(self.path, "a", encoding="utf-8") as f:
@@ -252,6 +275,9 @@ class SessionReport:
             + "</p>",
             "<p class='disclaimer'>Enumeration only. Every finding is a pointer to go "
             "study and try by hand - no exploit was run.</p>",
+            (f"<p class='disclaimer'>Session incomplete: {e(self._incomplete)}. "
+             "Findings and study pointers were never produced.</p>"
+             if self._incomplete else ""),
             "</header>",
         ]
 
@@ -478,6 +504,7 @@ class HuntReport:
         self._steps = 0
         self._events: list[dict] = []
         self._summary: dict | None = None
+        self._incomplete: str | None = None
 
         self._write(
             f"# Threat hunt: {workspace_label}\n\n"
@@ -566,6 +593,28 @@ class HuntReport:
                     f.write(f"- {s}\n")
                 f.write("\n")
 
+    def log_incomplete(self, reason: str):
+        """
+        Record that the session ended without the model calling its finish
+        tool, so the report says so rather than simply lacking a conclusion.
+
+        A report missing its findings section looks much like one whose
+        findings were thin. This is the same failure the red side's coverage
+        gate exists to catch - an incomplete run being indistinguishable from
+        a complete one - and it happened here for a duller reason: a turn hit
+        the token ceiling mid-sentence and the loop read that as a decision to
+        stop.
+        """
+        self._incomplete = reason
+        with open(self.path, "a", encoding="utf-8") as f:
+            f.write("## Session incomplete\n\n")
+            f.write(
+                f"**This session ended without a structured conclusion: {reason}**\n\n"
+                "The timeline above is what was gathered, but the findings, "
+                "indicators and next steps were never produced. Treat this as a "
+                "partial result, not a clean one.\n\n"
+            )
+
     def finalize_note(self):
         self.ended_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
         with open(self.path, "a", encoding="utf-8") as f:
@@ -591,7 +640,11 @@ class HuntReport:
             f"<p class='times'>Started {e(self.started_at)} UTC"
             + (f" &middot; ended {e(self.ended_at)} UTC" if self.ended_at else "") + "</p>",
             "<p class='disclaimer'>Read-only analysis - no logs were modified. "
-            "Findings are leads to investigate, not confirmed conclusions.</p></header>",
+            "Findings are leads to investigate, not confirmed conclusions.</p>",
+            (f"<p class='disclaimer'>Session incomplete: {e(self._incomplete)}. "
+             "Findings, IOCs and next steps were never produced.</p>"
+             if self._incomplete else ""),
+            "</header>",
             "<section class='timeline'>",
         ]
         for ev in self._events:

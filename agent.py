@@ -64,6 +64,17 @@ EXIT_INCOMPLETE = 3
 MODEL = "claude-sonnet-5"
 MAX_TURNS = 16
 
+# 2048 proved too tight in practice: a detailed analysis turn hit the ceiling
+# mid-sentence, which ended the loop before the model ever called the finish
+# tool, so the report lost its entire findings section. See MAX_CONTINUATIONS.
+MAX_TOKENS = 4096
+
+# When a turn stops on max_tokens the response is a half-finished thought, not
+# a decision to stop. Continuing is correct, but it has to be bounded or a
+# model that never converges would loop until MAX_TURNS paying full price each
+# time.
+MAX_CONTINUATIONS = 3
+
 SYSTEM_PROMPT = f"""\
 You are a study assistant helping a cybersecurity student practice recon \
 and enumeration methodology on a target they are personally authorized to \
@@ -301,11 +312,14 @@ def main():
         }
     ]
 
+    continuations = 0
+    completed = False
+
     for _turn in range(MAX_TURNS):
         def _create(msgs=messages):
             return client.messages.create(
                 model=MODEL,
-                max_tokens=2048,
+                max_tokens=MAX_TOKENS,
                 system=SYSTEM_PROMPT,
                 tools=TOOLS,
                 messages=msgs,
@@ -339,6 +353,7 @@ def main():
                 )
 
                 if block.name == "finish_session":
+                    completed = True
                     report.log_final_summary(block.input)
                     print(f"\n[agent] Session complete.\n\n{block.input.get('summary', '')}\n")
                     finished = True
@@ -404,6 +419,25 @@ def main():
 
         if tool_results:
             messages.append({"role": "user", "content": tool_results})
+        elif response.stop_reason == "max_tokens":
+            # The turn was cut off mid-thought. Ask it to carry on rather than
+            # treating a truncated sentence as a decision to stop - that is
+            # what silently cost the report its findings section.
+            continuations += 1
+            if continuations > MAX_CONTINUATIONS:
+                print(f"[agent] Response truncated {continuations} times; giving up.")
+                break
+            print(f"[agent] Response hit the token limit; continuing ({continuations}).")
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "Your previous message was cut off by the token limit. "
+                        "Continue from where you stopped. Keep it brief, and call "
+                        "finish_session when you have what you need."
+                    ),
+                }
+            )
         elif response.stop_reason != "tool_use":
             # Claude stopped talking without calling finish_session - end gracefully.
             break
@@ -412,6 +446,12 @@ def main():
     # Deterministic, and deliberately not a second model pass: the failure
     # being caught is a model declaring completion it did not reach, and
     # asking a model to check that is asking the faculty that just failed.
+    if not completed:
+        report.log_incomplete(
+            "the model never called finish_session; the coverage table below "
+            "still reflects what was actually done"
+        )
+
     checks = coverage(surface)
     summary = coverage_summary(checks)
     report.log_coverage(surface.summary(), checks, summary)
@@ -430,8 +470,14 @@ def main():
     )
     print(f"\n[agent] Done. Reports:\n  {report.path}\n  {report.html_path}")
 
+    if not completed:
+        print(
+            "\n[agent] INCOMPLETE: the session ended without finish_session, so the "
+            "report has no summary or study pointers."
+        )
     if not summary["complete"]:
         print(f"[agent] Methodology incomplete: {', '.join(summary['missed'])}")
+    if not completed or not summary["complete"]:
         sys.exit(EXIT_INCOMPLETE)
 
 
