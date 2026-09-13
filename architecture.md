@@ -175,9 +175,13 @@ defensive counterpart to `knowledge.py`.
 
 ### completeness.py
 
-Validates what a finish tool was called with. Deterministic, for the same
-reason the coverage gate is: a model asked whether it really finished is being
-asked by the faculty that just said yes.
+Validates and repairs what a finish tool was called with. Deterministic, for
+the same reason the coverage gate is: a model asked whether it really finished
+is being asked by the faculty that just said yes.
+
+`normalise_text` repairs whitespace escapes a model emitted literally. Only
+whitespace - decoding arbitrary escapes would mean reinterpreting text that
+came from the target.
 
 ### parsers.py
 
@@ -215,6 +219,13 @@ an estimate errs toward over-reporting a bill.
 
 Retry with exponential backoff and full jitter, honouring `Retry-After`. Only
 transient failures are retried; a 400 fails identically on the fifth attempt.
+
+`explain()` renders a non-retryable failure as something actionable. Correct
+behaviour is not sufficient on its own: a 401 was already handled correctly -
+not retried, raised immediately - and still cost real time because the useful
+sentence sat under twenty-five lines of stack from inside the SDK. Both agents
+use it; both must, and a test asserts so, because `hunt.py` went four releases
+without the retry wrapper purely because only `agent.py` was remembered.
 A recon session is a chain of dependent turns, so one transient error costs
 the whole session rather than one call - that asymmetry is why this exists.
 

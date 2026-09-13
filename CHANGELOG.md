@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.4] - 2026-09-11
+
+Three defects from live use.
+
+Fixed: **A 401 printed ~25 lines of SDK traceback** ending in the sentence that mattered. Non-retryable API errors now print an actionable message naming the likely cause and the fix, with the raw detail kept underneath. **Literal `\n` in model text** — a model writing a long summary emitted the characters backslash-n where it meant a line break, so reports rendered a timeline as one unbroken line. Whitespace escapes in finish payloads are now repaired; other escapes are left alone so target-derived text survives as written. **`hunt.py` had no retry at all** — `call_with_retry` was added to `agent.py` in v0.4.0 and the blue half was missed, so every hunt ran with no backoff. Found only because adding the error handler produced an undefined-name error on an import that should already have been there.
+
+Tests: 15 new (208 total), verified to fail against v0.4.3.
+
 ## [0.4.3] - 2026-09-11
 
 Found by the next live run after v0.4.2. The hunt reached `finish_hunt`, printed "Hunt complete" and exited 0 — and the report still had no findings. The model had written its entire timeline as prose in the conversation and called the finish tool with an empty payload; `completed = True` was set on the strength of the call alone.

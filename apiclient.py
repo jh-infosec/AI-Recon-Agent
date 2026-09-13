@@ -104,3 +104,58 @@ def call_with_retry(
                 on_retry(attempt + 1, delay, exc)
             sleep(delay)
     raise last  # unreachable, kept for clarity
+
+
+# Non-retryable API failures, mapped to something a person can act on. The
+# SDK raises these with a full traceback through httpx internals; a 401 in
+# particular produced ~25 lines of stack ending in "API key is invalid",
+# which buries the one sentence that matters under machinery the operator
+# did not write and cannot fix.
+_FRIENDLY = {
+    "AuthenticationError": (
+        "Your API key was rejected (HTTP 401).",
+        [
+            "Check the key is set:  echo \"${ANTHROPIC_API_KEY:0:12}...\"",
+            "If it is empty, export it or source the file that holds it.",
+            "If it is set, the key may have been revoked - create a new one at "
+            "https://console.anthropic.com -> API keys -> Create Key.",
+            "Keys are shown once at creation and cannot be retrieved later.",
+        ],
+    ),
+    "PermissionDeniedError": (
+        "Your API key does not have permission for this request (HTTP 403).",
+        ["Check the key belongs to the right workspace, and that the model "
+         "you selected is enabled for it."],
+    ),
+    "NotFoundError": (
+        "The API rejected the model name (HTTP 404).",
+        ["Check MODEL in agent.py / hunt.py against the current list at "
+         "https://docs.claude.com/en/docs/about-claude/models/overview"],
+    ),
+    "BadRequestError": (
+        "The API rejected the request as malformed (HTTP 400).",
+        ["This is a bug in the agent rather than your setup - the message "
+         "below says which field."],
+    ),
+}
+
+
+def explain(exc: Exception) -> str:
+    """
+    Render a non-retryable API failure as something actionable.
+
+    Returns a multi-line string ready to print. Unknown errors still get the
+    class name and message, so nothing is swallowed - the aim is to stop
+    burying the useful sentence, not to hide the error.
+    """
+    name = type(exc).__name__
+    title, hints = _FRIENDLY.get(
+        name, (f"The API call failed: {name}.", ["See the message below."])
+    )
+    lines = [f"\n[error] {title}"]
+    lines += [f"        - {h}" for h in hints]
+    detail = str(exc).strip()
+    if detail:
+        first = detail.splitlines()[0][:300]
+        lines.append(f"\n        API said: {first}")
+    return "\n".join(lines)

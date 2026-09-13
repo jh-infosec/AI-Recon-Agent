@@ -105,3 +105,35 @@ def retry_message(tool_name: str, reason: str) -> str:
         "`summary`, and one entry per finding with its severity, MITRE technique, "
         "the exact evidence line, and a recommendation."
     )
+
+
+def normalise_text(value):
+    """
+    Repair literal escape sequences in model-supplied text.
+
+    Observed live: a model building a long `summary` wrote the two characters
+    backslash-n where it meant a line break, so the report rendered
+    "...baseline.\\n\\n10:00:11 - Attacker..." as one unbroken line with
+    visible backslashes through it.
+
+    This happens because the model is emitting a JSON string by hand and
+    escaping it twice: the transport layer already decoded one level, so what
+    arrives is the literal escape rather than the character. Nothing upstream
+    can tell the difference, and the report is the thing a person reads, so it
+    is repaired here.
+
+    Only whitespace escapes are translated. Decoding arbitrary escapes would
+    mean interpreting attacker-adjacent text, and a log line containing a
+    backslash sequence should survive into the report exactly as it was.
+    """
+    if isinstance(value, str):
+        return (
+            value.replace("\\r\\n", "\n")
+            .replace("\\n", "\n")
+            .replace("\\t", "\t")
+        )
+    if isinstance(value, list):
+        return [normalise_text(v) for v in value]
+    if isinstance(value, dict):
+        return {k: normalise_text(v) for k, v in value.items()}
+    return value
