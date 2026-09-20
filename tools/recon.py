@@ -52,14 +52,18 @@ MAX_OUTPUT_CHARS = 20000
 # timeout sits above it so the clean exit wins.
 FFUF_MAXTIME = 240
 
-# Threads. Measured against a live THM box over a 172ms VPN: a single request
-# returns in 195ms, so throughput is latency-bound rather than server-bound -
-# but the target began erroring under sustained load (0 errors at 1:44, 122 by
-# 6:50) while throughput fell. More concurrency makes that worse, not better.
-# Lab boxes are small and often rate-limited, so the default is modest and the
-# expectation is that a full wordlist may not finish; see FFUF_MAXTIME and the
-# partial-result handling.
-FUZZ_THREADS = "10"
+# Threads. Measured on a HEALTHY lab box over a VPN: 46 requests/sec with zero
+# errors, finishing a 4614-word list in roughly 100 seconds.
+#
+# An earlier measurement suggested the opposite - 5-9 req/sec and errors
+# climbing from 0 to 122 - and this default was cut to 10 on the strength of
+# it. That box was expiring. A THM/HTB machine degrades before it dies, and
+# the symptoms (slow responses, rising connection errors, eventually nothing
+# at all) look exactly like a target defending itself against concurrency.
+# They are not the same thing, and the difference is worth knowing: the fix
+# for a dying box is to redeploy it, not to scan it more gently.
+FUZZ_THREADS = "40"
+GOBUSTER_THREADS = "20"
 DEFAULT_TIMEOUT = 300  # seconds
 DEFAULT_WORDLIST = "/usr/share/wordlists/dirb/common.txt"
 # Common on Kali/Parrot via the seclists package - used for vhost/subdomain fuzzing.
@@ -209,7 +213,7 @@ def run_gobuster(
     binary = _require_binary("gobuster", "gobuster")
     scheme = "https" if https else "http"
     url = f"{scheme}://{target}:{port}{base}"
-    cmd = [binary, "dir", "-u", url, "-w", str(wl), "-q", "-t", FUZZ_THREADS]
+    cmd = [binary, "dir", "-u", url, "-w", str(wl), "-q", "-t", GOBUSTER_THREADS]
 
     result = _run(cmd, timeout=300)
     result["parsed"] = parsers.parse_gobuster(result.get("stdout", ""))

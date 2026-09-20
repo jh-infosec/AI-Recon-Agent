@@ -149,20 +149,28 @@ last of those matters most: the report runs after every tool has been paid
 for, which makes it the most expensive thing in the session to lose to a
 crash.
 
-### Scanning a lab box over a VPN is latency-bound and self-limiting
+### An expiring lab box looks like a defended one
 
-Measured, not assumed: a single request to a live THM box returned in 195ms,
-while a 4614-word fuzz ran at 5-9 requests/sec and the target began erroring
-partway through - 0 errors at 1:44, 122 by 6:50. The server is fine; sustained
-concurrency is what it dislikes.
+Measured on a healthy THM box over a VPN: 46 requests/sec, zero errors, a
+4614-word fuzz finished in about 100 seconds. Scanning a lab machine is not
+slow and targets do not generally push back.
 
-Three things follow, and they shape the tool rather than just its settings.
-Concurrency stays modest, because more threads made it worse. A full wordlist
-sweep is not expected to finish, so partial results are the normal case and
-must be preserved and labelled. And the productive technique on a box like
-this is not a bigger wordlist but reading the site and requesting the paths
-its own content implies - which is what `fetch_page` is for, and what the
-empty-scan note now tells the model to do.
+This section previously said the opposite, on the strength of a real
+measurement taken from a box that was quietly dying - 5-9 requests/sec, errors
+climbing from 0 to 122, eventually no response at all. That reading led to the
+fuzzing concurrency being cut by four in v0.5.5, which was wrong and was
+reverted in v0.5.6.
+
+The lesson is the useful part, and it is now what the empty-scan and
+partial-scan notes tell the model. A THM/HTB machine degrades before it stops:
+responses slow, connection errors climb, and the box stays pingable while
+serving almost nothing. That is indistinguishable, from inside a scan, from a
+target rate-limiting an aggressive client - and the two have opposite fixes.
+Redeploy the machine; do not scan it more gently.
+
+The more general point, which cost three releases here: a number measured once
+under unknown conditions is not a property of the system. This document should
+not have recorded it as one.
 
 ### An absence must be stated, not implied
 

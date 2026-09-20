@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.6] - 2026-09-13
+
+Corrects v0.5.5, which was based on a bad measurement.
+
+A fresh box does **46 requests/sec with zero errors**, finishing a 4614-word fuzz in about 100 seconds. The figures behind v0.5.5 — 5-9 req/sec, errors climbing from 0 to 122 — came from a machine that was quietly expiring, not from a target objecting to concurrency.
+
+Reverted: **Fuzzing threads back to 40 (ffuf) and 20 (gobuster).** Cutting them was solving a problem that did not exist.
+
+Changed: **The empty-scan and partial-scan notes now name an expiring machine as the most likely cause** and tell the model to check the site responds at all before concluding anything. This is the genuinely useful finding: a THM/HTB box degrades before it dies — responses slow, connection errors climb, the box stays pingable while serving almost nothing — and from inside a scan that is indistinguishable from a target rate-limiting an aggressive client. The two have opposite fixes. Redeploy the machine; do not scan it more gently.
+
+The `architecture.md` section that recorded the wrong figures as a property of the system has been replaced with the correct measurement and a note about how it went wrong. A number measured once under unknown conditions is not a property of the system, and the document should not have said it was.
+
+Kept from v0.5.5: partial results are still preserved and labelled, and "missing does not mean absent" still holds — both are right whatever caused the truncation.
+
+Tests: 2 new, 3 corrected (357 total).
+
 ## [0.5.5] - 2026-09-13
 
 Measured against a live box rather than guessed at. A single request returns in 195ms, so the server is healthy and fuzzing throughput is latency-bound, not server-bound — but under sustained load the target degrades: 596 words and 0 errors at 1:44, 1786 words and 122 errors at 6:50. A 4614-word list at 5-9 requests/sec needs 8+ minutes. On a lab box over a VPN, a full wordlist sweep will not finish, and partial results are the normal case.

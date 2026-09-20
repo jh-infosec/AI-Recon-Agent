@@ -249,7 +249,7 @@ def test_empty_directory_scan_is_flagged_as_unusual():
     """
     view = parsers.compact_for_model("run_gobuster", parsers.parse_gobuster(""))
     assert "NO paths" in view["result"]
-    assert "rate-limiting" in view["result"] or "wordlist" in view["result"]
+    assert "EXPIRED" in view["result"] or "wordlist" in view["result"]
 
 
 def test_empty_scan_suggests_reading_the_page_instead():
@@ -276,18 +276,41 @@ def test_a_productive_scan_gets_no_such_note():
 # req/sec needs 8+ minutes, so on a box like this a full sweep will not finish
 # and partial results are the normal case, not the exception.
 # --------------------------------------------------------------------------- #
-def test_fuzzing_concurrency_is_modest():
-    """40 threads pushed a lab box into erroring; the measurement is in the code."""
+def test_fuzzing_concurrency_suits_a_healthy_box():
+    """
+    Restored in v0.5.6. The earlier reduction to 10 threads was based on a
+    measurement taken from an expiring box - 5-9 req/sec with rising errors -
+    which turned out to be the machine dying rather than the target objecting
+    to concurrency. A healthy box does 46 req/sec at 40 threads with no errors.
+    """
     from tools import recon as _recon
-    assert int(_recon.FUZZ_THREADS) <= 20
+    assert int(_recon.FUZZ_THREADS) == 40
+    assert int(_recon.GOBUSTER_THREADS) == 20
+
+
+def test_thread_counts_are_named_constants_not_literals():
+    """So a future change happens in one place, with the measurement beside it."""
     src = (Path(__file__).parent.parent / "tools" / "recon.py").read_text(encoding="utf-8")
+    assert src.count("FUZZ_THREADS") >= 3      # definition + both ffuf modes
+    assert src.count("GOBUSTER_THREADS") >= 2  # definition + gobuster
     assert '"-t", "40"' not in src
     assert '"-t", "20"' not in src
 
 
-def test_all_fuzzers_share_the_thread_setting():
-    src = (Path(__file__).parent.parent / "tools" / "recon.py").read_text(encoding="utf-8")
-    assert src.count("FUZZ_THREADS") >= 4   # definition + gobuster + both ffuf modes
+def test_notes_name_an_expiring_box_as_the_likely_cause():
+    """The diagnosis that took three releases to get right."""
+    empty = parsers.compact_for_model("run_gobuster", parsers.parse_gobuster(""))
+    assert "EXPIRED" in empty["result"] or "DYING" in empty["result"]
+    partial = parsers.compact_for_model(
+        "run_ffuf", {"results": [{"input": "a", "status": 200}], "count": 1,
+                     "partial": True})
+    assert "expiring" in partial["result"]
+
+
+def test_empty_note_tells_the_model_to_check_the_box_is_up():
+    view = parsers.compact_for_model("run_gobuster", parsers.parse_gobuster(""))
+    assert "fetch_page on /" in view["result"]
+    assert "redeploying" in view["result"]
 
 
 def test_partial_note_warns_that_missing_is_not_absent():
@@ -302,9 +325,8 @@ def test_partial_note_warns_that_missing_is_not_absent():
     assert "alphabet" in view["result"]
 
 
-def test_empty_note_names_rate_limiting_and_a_better_move():
+def test_empty_note_still_suggests_reading_the_site():
     view = parsers.compact_for_model("run_gobuster", parsers.parse_gobuster(""))
-    assert "rate-limiting" in view["result"]
     assert "fetch_page" in view["result"]
     assert "wp-login.php" in view["result"]
 

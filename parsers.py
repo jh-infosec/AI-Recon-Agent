@@ -215,12 +215,13 @@ def compact_for_model(tool_name: str, parsed: dict, budget: int = MODEL_PAYLOAD_
                 "PARTIAL: the scan hit its time limit and these are the paths it "
                 "reached, not the complete set - MISSING DOES NOT MEAN ABSENT. "
                 "Wordlists are alphabetical, so anything late in the alphabet was "
-                "probably never tried. Measured on a lab box over a VPN, a "
-                "4600-word list runs at roughly 5-9 requests/sec and takes 8+ "
-                "minutes, and targets often start erroring partway through. Do "
-                "not re-run the same scan hoping for more. Either fetch specific "
-                "paths you have reason to suspect, or run a smaller, targeted "
-                "wordlist."
+                "probably never tried; a scan cut off at 'f' says nothing about "
+                "wp-login.php. A healthy lab box completes this wordlist in about "
+                "100 seconds, so hitting the limit suggests the target has slowed "
+                "down - on THM/HTB that usually means the machine is expiring. "
+                "Check it is still up before drawing conclusions, and prefer "
+                "fetching specific paths you have reason to suspect over "
+                "re-running the sweep."
             )
         elif not results:
             # Same reasoning as the empty nmap result: an absence that might be
@@ -230,16 +231,18 @@ def compact_for_model(tool_name: str, parsed: dict, budget: int = MODEL_PAYLOAD_
             # empty result was indistinguishable from "no hidden paths exist".
             view["result"] = (
                 "This scan found NO paths at all. On a web server that is serving "
-                "pages, that is unusual and is more often a scanning problem than "
-                "an empty site: the server may be rate-limiting (lab boxes "
-                "commonly start dropping requests under sustained fuzzing), "
-                "rewriting URLs, or the wordlist may not suit this application. "
-                "Do not re-run the same scan. The productive move is to READ the "
-                "site and follow what it tells you: fetch_page on / and "
-                "/robots.txt, then request the specific paths the content, the "
-                "page comments, or the technology stack imply. On a WordPress "
-                "site that means /wp-login.php and similar, guessed directly "
-                "rather than brute-forced."
+                "pages that is unusual, and it is more often a problem with the "
+                "scan or the target than an empty site. The most common cause on "
+                "a lab platform is that THE MACHINE HAS EXPIRED OR IS DYING - "
+                "they degrade before they stop, so requests slow and then fail "
+                "while the box still looks reachable. Use fetch_page on / to "
+                "check whether the site responds at all; if it does not, the "
+                "target needs redeploying and nothing else here is meaningful. "
+                "If the site IS up, read it and follow what it tells you: "
+                "fetch_page on / and /robots.txt, then request the paths its "
+                "content, comments or technology stack imply - on a WordPress "
+                "site, /wp-login.php and similar, asked for directly rather than "
+                "brute-forced. Do not simply re-run the same scan."
             )
         return view
 
