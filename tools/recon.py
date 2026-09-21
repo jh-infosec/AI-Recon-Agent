@@ -213,7 +213,14 @@ def run_gobuster(
     binary = _require_binary("gobuster", "gobuster")
     scheme = "https" if https else "http"
     url = f"{scheme}://{target}:{port}{base}"
-    cmd = [binary, "dir", "-u", url, "-w", str(wl), "-q", "-t", GOBUSTER_THREADS]
+    # No -q. Quiet mode suppresses gobuster's own diagnostics, and those are
+    # exactly what is needed when it returns nothing: it exits early and says
+    # why (wildcard responses, connection errors, a status-code filter that
+    # matched everything) on stdout, and with -q that explanation is thrown
+    # away. On a live box gobuster found zero paths where ffuf found thirty,
+    # and -q meant there was nothing to diagnose it with. The parser only
+    # matches lines beginning with a path, so the banner is ignored.
+    cmd = [binary, "dir", "-u", url, "-w", str(wl), "-t", GOBUSTER_THREADS]
 
     result = _run(cmd, timeout=300)
     result["parsed"] = parsers.parse_gobuster(result.get("stdout", ""))

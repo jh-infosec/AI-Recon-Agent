@@ -209,6 +209,8 @@ def compact_for_model(tool_name: str, parsed: dict, budget: int = MODEL_PAYLOAD_
             view = {"count": parsed.get("count", len(results)),
                     "results": results[:50], "truncated": True}
 
+        if parsed.get("result"):
+            view["result"] = parsed["result"]
         if parsed.get("partial"):
             view["partial"] = True
             view["result"] = (
@@ -293,12 +295,58 @@ def parse_ffuf_json(json_text: str) -> dict:
             }
         )
     out["count"] = len(out["results"])
-    return out
+    return annotate_fuzz_result(out)
 
 
 _GOBUSTER_LINE = re.compile(
     r"^(?P<path>/\S*)\s+\(Status:\s*(?P<status>\d{3})\)(?:\s*\[Size:\s*(?P<size>\d+)\])?"
 )
+
+
+EMPTY_SCAN_NOTE = (
+    "This scan found NO paths at all. On a web server that is serving pages "
+    "that is unusual, and it is more often a problem with the scan or the "
+    "target than an empty site. The most common cause on a lab platform is "
+    "that THE MACHINE HAS EXPIRED OR IS DYING - they degrade before they stop, "
+    "so requests slow and then fail while the box still looks reachable. Use "
+    "fetch_page on / to check whether the site responds at all; if it does "
+    "not, the target needs redeploying and nothing else here is meaningful. "
+    "If the site IS up, read it and follow what it tells you: fetch_page on / "
+    "and /robots.txt, then request the paths its content, comments or "
+    "technology stack imply - on a WordPress site, /wp-login.php and similar, "
+    "asked for directly rather than brute-forced. Do not simply re-run the "
+    "same scan."
+)
+
+PARTIAL_SCAN_NOTE = (
+    "PARTIAL: the scan hit its time limit and these are the paths it reached, "
+    "not the complete set - MISSING DOES NOT MEAN ABSENT. Wordlists are "
+    "alphabetical, so anything late in the alphabet was probably never tried; "
+    "a scan cut off at 'f' says nothing about wp-login.php. A healthy lab box "
+    "completes this wordlist in about 100 seconds, so hitting the limit "
+    "suggests the target has slowed down - on THM/HTB that usually means the "
+    "machine is expiring. Check it is still up before drawing conclusions, and "
+    "prefer fetching specific paths you have reason to suspect over re-running "
+    "the sweep."
+)
+
+
+def annotate_fuzz_result(parsed: dict) -> dict:
+    """
+    Attach the empty/partial note at PARSE time rather than during compaction.
+
+    It used to be added only in `compact_for_model`, which meant the model saw
+    it and the operator did not: `console.highlights` is handed the raw parsed
+    dict, so an empty scan printed nothing at all and looked like a crash. Any
+    note that explains a result belongs with the result.
+    """
+    if not isinstance(parsed, dict) or parsed.get("parse_error"):
+        return parsed
+    if parsed.get("partial"):
+        parsed["result"] = PARTIAL_SCAN_NOTE
+    elif not parsed.get("results"):
+        parsed["result"] = EMPTY_SCAN_NOTE
+    return parsed
 
 
 def parse_gobuster(text: str) -> dict:
@@ -319,7 +367,7 @@ def parse_gobuster(text: str) -> dict:
             }
         )
     out["count"] = len(out["results"])
-    return out
+    return annotate_fuzz_result(out)
 
 
 def parse_whatweb_json(json_text: str) -> dict:

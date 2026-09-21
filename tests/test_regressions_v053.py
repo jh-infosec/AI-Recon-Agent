@@ -356,3 +356,76 @@ def test_agent_renders_notes_as_warnings():
     src = (Path(__file__).parent.parent / "agent.py").read_text(encoding="utf-8")
     assert 'line.startswith("!")' in src
     assert "console.warn(line[1:])" in src
+
+
+# --------------------------------------------------------------------------- #
+# v0.5.7 - the empty-scan note never reached the console
+#
+# v0.5.4 added the note and v0.5.5 claimed to surface it, but it was attached
+# during compact_for_model while console.highlights is handed the RAW parsed
+# dict. So the model was told the scan found nothing and the operator saw an
+# empty tool call, indistinguishable from a crash - twice, across two releases
+# that both thought they had fixed it.
+# --------------------------------------------------------------------------- #
+def test_note_is_attached_at_parse_time():
+    """Any note that explains a result belongs with the result."""
+    raw = parsers.parse_gobuster("")
+    assert "result" in raw
+    assert "NO paths" in raw["result"]
+
+
+def test_console_sees_the_note_from_the_raw_parsed_dict():
+    """The exact path agent.py uses: console.highlights(name, result['parsed'])."""
+    import console
+    raw = parsers.parse_gobuster("")
+    lines = console.highlights("run_gobuster", raw)
+    assert lines and lines[0].startswith("!")
+
+
+def test_ffuf_empty_result_is_annotated_too():
+    raw = parsers.parse_ffuf_json('{"results":[]}')
+    assert "NO paths" in raw.get("result", "")
+
+
+def test_a_productive_scan_is_not_annotated():
+    raw = parsers.parse_gobuster("/admin (Status: 301) [Size: 240]\n")
+    assert "result" not in raw
+    import console
+    assert not any(x.startswith("!") for x in console.highlights("run_gobuster", raw))
+
+
+def test_compaction_carries_the_note_through():
+    view = parsers.compact_for_model("run_gobuster", parsers.parse_gobuster(""))
+    assert "NO paths" in view["result"]
+
+
+# --------------------------------------------------------------------------- #
+# gobuster diagnostics
+# --------------------------------------------------------------------------- #
+def test_gobuster_is_not_run_quietly():
+    """
+    -q throws away the explanation for an empty run. gobuster reports wildcard
+    detection, connection failures and filter problems on stdout, and on a
+    live box it found zero paths where ffuf found thirty with nothing to
+    diagnose it from.
+    """
+    src = (Path(__file__).parent.parent / "tools" / "recon.py").read_text(encoding="utf-8")
+    idx = src.index('cmd = [binary, "dir"')
+    assert '"-q"' not in src[idx:idx + 200]
+
+
+def test_gobuster_parser_ignores_the_banner():
+    """Dropping -q means the banner arrives; only path lines may be parsed."""
+    out = (
+        "===============================================================\n"
+        "Gobuster v3.6\n"
+        "[+] Url:            http://10.0.0.1:80\n"
+        "[+] Threads:        20\n"
+        "Starting gobuster in directory enumeration mode\n"
+        "/admin                (Status: 301) [Size: 236]\n"
+        "Progress: 4614 / 4615 (99.98%)\n"
+        "Finished\n"
+    )
+    r = parsers.parse_gobuster(out)
+    assert r["count"] == 1
+    assert r["results"][0]["path"] == "/admin"

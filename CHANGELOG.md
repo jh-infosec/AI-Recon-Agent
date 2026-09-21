@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.7] - 2026-09-13
+
+Fixed: **The empty-scan note still never reached the console.** It was attached during `compact_for_model`, but `console.highlights` is handed the raw parsed dict, so the model was told a scan found nothing while the operator saw an empty tool call — indistinguishable from a crash. Two releases claimed to fix this and neither did. The note is now attached at parse time, where both consumers see it, because a note that explains a result belongs with the result.
+
+Changed: **gobuster no longer runs with `-q`.** On a live box it returned zero paths where a manual ffuf found thirty, and quiet mode had discarded the one thing that would explain why — gobuster reports wildcard detection, connection failures and filter problems on stdout. The parser only matches lines beginning with a path, so the banner is ignored. No guess has been made about the cause; this makes the next occurrence diagnosable.
+
+Tests: 7 new (364 total).
+
 ## [0.5.6] - 2026-09-13
 
 Corrects v0.5.5, which was based on a bad measurement.
