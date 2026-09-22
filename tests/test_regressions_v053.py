@@ -429,3 +429,129 @@ def test_gobuster_parser_ignores_the_banner():
     r = parsers.parse_gobuster(out)
     assert r["count"] == 1
     assert r["results"][0]["path"] == "/admin"
+
+
+# --------------------------------------------------------------------------- #
+# v0.5.8 - the gobuster parser never matched real gobuster output
+#
+# gobuster 3.8.2 prints the bare word, not a path:
+#     admin   (Status: 301) [Size: 236] [--> http://host/admin/]
+# The parser required a leading slash, so EVERY line failed to match and a
+# scan that found forty-four paths - including all eleven wp-* entries - was
+# reported as finding none. Broken since v0.4.0.
+#
+# It survived eight releases because the test fixture was written from the
+# same wrong assumption as the parser: "/admin (Status: 301)", with a slash
+# the tool does not emit. A fixture invented alongside the code tests the
+# assumption, not the behaviour. This one is a verbatim capture of a real run.
+# --------------------------------------------------------------------------- #
+REAL_GOBUSTER_OUTPUT = """===============================================================
+Gobuster v3.8.2
+by OJ Reeves (@TheColonial) & Christian Mehlmauer (@firefart)
+===============================================================
+[+] Url:                     http://10.114.151.119:80
+[+] Method:                  GET
+[+] Threads:                 20
+[+] Wordlist:                /usr/share/dirb/wordlists/common.txt
+[+] Negative Status codes:   404
+[+] User Agent:              gobuster/3.8.2
+[+] Timeout:                 10s
+===============================================================
+Starting gobuster in directory enumeration mode
+===============================================================
+.htaccess            (Status: 403) [Size: 218]
+.htpasswd            (Status: 403) [Size: 218]
+.hta                 (Status: 403) [Size: 213]
+0                    (Status: 301) [Size: 0] [--> http://10.114.151.119:80/0/]
+admin                (Status: 301) [Size: 236] [--> http://10.114.151.119/admin/]
+atom                 (Status: 200) [Size: 631]
+audio                (Status: 301) [Size: 236] [--> http://10.114.151.119/audio/]
+blog                 (Status: 301) [Size: 235] [--> http://10.114.151.119/blog/]
+Progress: 759 / 4613 (16.45%)[ERROR] error on word backup-db: timeout occurred during the request
+css                  (Status: 301) [Size: 234] [--> http://10.114.151.119/css/]
+dashboard            (Status: 302) [Size: 0] [--> http://10.114.151.119:80/wp-admin/]
+favicon.ico          (Status: 200) [Size: 0]
+feed                 (Status: 200) [Size: 813]
+image                (Status: 301) [Size: 0] [--> http://10.114.151.119:80/image/]
+Image                (Status: 301) [Size: 0] [--> http://10.114.151.119:80/Image/]
+images               (Status: 301) [Size: 237] [--> http://10.114.151.119/images/]
+index.html           (Status: 200) [Size: 1188]
+[ERROR] error on word Health: timeout occurred during the request
+index.php            (Status: 301) [Size: 0] [--> http://10.114.151.119:80/]
+Progress: 2111 / 4613 (45.76%)[ERROR] error on word iframe: timeout occurred during the request
+js                   (Status: 301) [Size: 233] [--> http://10.114.151.119/js/]
+license              (Status: 200) [Size: 309]
+login                (Status: 302) [Size: 0] [--> http://10.114.151.119:80/wp-login.php]
+page1                (Status: 200) [Size: 8381]
+phpmyadmin           (Status: 403) [Size: 94]
+rdf                  (Status: 200) [Size: 817]
+readme               (Status: 200) [Size: 64]
+robots               (Status: 200) [Size: 41]
+robots.txt           (Status: 200) [Size: 41]
+rss                  (Status: 200) [Size: 366]
+rss2                 (Status: 200) [Size: 813]
+sitemap              (Status: 200) [Size: 0]
+sitemap.xml          (Status: 200) [Size: 0]
+video                (Status: 301) [Size: 236] [--> http://10.114.151.119/video/]
+wp-admin             (Status: 301) [Size: 239] [--> http://10.114.151.119/wp-admin/]
+wp-config            (Status: 200) [Size: 0]
+wp-content           (Status: 301) [Size: 241] [--> http://10.114.151.119/wp-content/]
+wp-cron              (Status: 200) [Size: 0]
+wp-includes          (Status: 301) [Size: 242] [--> http://10.114.151.119/wp-includes/]
+wp-links-opml        (Status: 200) [Size: 227]
+wp-load              (Status: 200) [Size: 0]
+wp-login             (Status: 200) [Size: 2693]
+wp-mail              (Status: 500) [Size: 3074]
+wp-settings          (Status: 500) [Size: 0]
+wp-signup            (Status: 302) [Size: 0] [--> http://10.114.151.119:80/wp-login.php?action=register]
+xmlrpc.php           (Status: 405) [Size: 42]
+xmlrpc               (Status: 405) [Size: 42]
+Progress: 4613 / 4613 (100.00%)
+===============================================================
+Finished
+===============================================================
+"""
+
+
+def test_real_gobuster_output_parses():
+    r = parsers.parse_gobuster(REAL_GOBUSTER_OUTPUT)
+    assert r["count"] == 44, f"got {r['count']}"
+
+
+def test_bare_words_are_normalised_to_paths():
+    """gobuster emits 'admin'; everything downstream expects '/admin'."""
+    r = parsers.parse_gobuster("admin                (Status: 301) [Size: 236]")
+    assert r["results"][0]["path"] == "/admin"
+
+
+def test_slashed_form_still_works():
+    """Older gobuster versions and other tools do emit a leading slash."""
+    r = parsers.parse_gobuster("/admin (Status: 301) [Size: 240]")
+    assert r["results"][0]["path"] == "/admin"
+
+
+def test_all_wordpress_paths_are_found():
+    r = parsers.parse_gobuster(REAL_GOBUSTER_OUTPUT)
+    paths = {x["path"] for x in r["results"]}
+    for expected in ("/wp-admin", "/wp-login", "/wp-config", "/wp-content",
+                     "/wp-includes", "/wp-signup"):
+        assert expected in paths, expected
+
+
+def test_redirect_targets_are_captured():
+    """gobuster supplies these and ffuf does not; a 301 to /wp-admin/ matters."""
+    r = parsers.parse_gobuster(REAL_GOBUSTER_OUTPUT)
+    dash = next(x for x in r["results"] if x["path"] == "/dashboard")
+    assert dash["redirect"].endswith("/wp-admin/")
+
+
+def test_banner_progress_and_error_lines_are_ignored():
+    r = parsers.parse_gobuster(REAL_GOBUSTER_OUTPUT)
+    for x in r["results"]:
+        assert not any(junk in x["path"] for junk in ("Progress", "ERROR", "=", "["))
+
+
+def test_a_real_scan_is_not_annotated_as_empty():
+    """The empty-scan note must not fire on a scan that found forty-four paths."""
+    r = parsers.parse_gobuster(REAL_GOBUSTER_OUTPUT)
+    assert "result" not in r

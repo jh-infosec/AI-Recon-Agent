@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.8] - 2026-09-13
+
+Fixed: **The gobuster parser never matched real gobuster output.** gobuster 3.8.2 prints the bare word — `admin   (Status: 301) [Size: 236] [--> http://host/admin/]` — and the parser required a leading slash. Every line failed to match, so a scan that found 44 paths, including all 11 `wp-*` entries, was reported as finding none. Broken since v0.4.0.
+
+Both forms are now accepted and normalised, and the redirect target is captured — gobuster supplies it, ffuf does not, and a 302 to `/wp-admin/` is worth knowing.
+
+The bug survived eight releases and 364 tests because the fixture was written from the same wrong assumption as the parser: `/admin (Status: 301)`, with a slash the tool does not emit. A fixture invented alongside the code tests the assumption rather than the behaviour. The new fixture is a verbatim capture of a real run, and it was found by running gobuster by hand for fifteen seconds — not by another paid agent session, three of which had already theorised about rate limiting, mod_pagespeed and wordlist mismatch.
+
+Tests: 7 new (371 total), verified against v0.5.7.
+
 ## [0.5.7] - 2026-09-13
 
 Fixed: **The empty-scan note still never reached the console.** It was attached during `compact_for_model`, but `console.highlights` is handed the raw parsed dict, so the model was told a scan found nothing while the operator saw an empty tool call — indistinguishable from a crash. Two releases claimed to fix this and neither did. The note is now attached at parse time, where both consumers see it, because a note that explains a result belongs with the result.

@@ -298,8 +298,19 @@ def parse_ffuf_json(json_text: str) -> dict:
     return annotate_fuzz_result(out)
 
 
+# gobuster 3.8.2 prints the bare word, not a path:
+#     admin   (Status: 301) [Size: 236] [--> http://host/admin/]
+# The leading slash this pattern used to require is not there, so every line
+# failed to match and a scan that found forty paths was reported as finding
+# none. That went unnoticed for eight releases because the test fixture was
+# written from the same wrong assumption as the parser.
+#
+# Both forms are accepted now, and the redirect target is captured - gobuster
+# supplies it and ffuf does not, and it says where a 301 actually goes.
 _GOBUSTER_LINE = re.compile(
-    r"^(?P<path>/\S*)\s+\(Status:\s*(?P<status>\d{3})\)(?:\s*\[Size:\s*(?P<size>\d+)\])?"
+    r"^(?P<path>/?[^\s(]+)\s+\(Status:\s*(?P<status>\d{3})\)"
+    r"(?:\s*\[Size:\s*(?P<size>\d+)\])?"
+    r"(?:\s*\[-->\s*(?P<redirect>[^\]]+)\])?"
 )
 
 
@@ -359,13 +370,15 @@ def parse_gobuster(text: str) -> dict:
         m = _GOBUSTER_LINE.match(line.strip())
         if not m:
             continue
-        out["results"].append(
-            {
-                "path": m.group("path"),
-                "status": int(m.group("status")),
-                "size": int(m.group("size")) if m.group("size") else None,
-            }
-        )
+        path = m.group("path")
+        entry = {
+            "path": path if path.startswith("/") else "/" + path,
+            "status": int(m.group("status")),
+            "size": int(m.group("size")) if m.group("size") else None,
+        }
+        if m.group("redirect"):
+            entry["redirect"] = m.group("redirect").strip()
+        out["results"].append(entry)
     out["count"] = len(out["results"])
     return annotate_fuzz_result(out)
 

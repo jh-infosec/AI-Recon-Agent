@@ -172,6 +172,25 @@ The more general point, which cost three releases here: a number measured once
 under unknown conditions is not a property of the system. This document should
 not have recorded it as one.
 
+### Test fixtures must come from the tool, not from the assumption
+
+The gobuster parser required a leading slash that gobuster does not print. It
+matched nothing, for eight releases, and 364 tests never noticed because the
+fixture had been written from the same belief as the parser.
+
+Any test written from an assumption tests that assumption. Where a parser
+reads another program's output, its fixture must be a verbatim capture of that
+program actually running - the whole point of parsing is that the format is
+someone else's to define.
+
+The same applies to diagnosis. Three releases theorised about why gobuster
+returned nothing (rate limiting, mod_pagespeed, wordlist mismatch, quiet mode
+hiding errors) and each theory produced a code change. Running the tool by
+hand answered it in fifteen seconds. When behaviour is unexplained, reproduce
+it with the underlying tool before changing anything - it is faster, it is
+free, and unlike another agent run it produces evidence rather than another
+instance of the symptom.
+
 ### An absence must be stated, not implied
 
 A tool that finds nothing has to say so. An empty list arriving as an absence
