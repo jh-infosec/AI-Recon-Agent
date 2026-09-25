@@ -1,6 +1,6 @@
 # ai-recon-agent
 
-**v0.5.8**
+**v0.5.9**
 
 ai-recon-agent is a small security study kit with two halves: a **red-team
 recon agent** for practicing enumeration on machines you're authorized to
@@ -159,7 +159,7 @@ architecture.md           - design principles, constraints, cleared defects
 ```bash
 pip install -r requirements-dev.txt
 ruff check .      # lint
-python -m pytest -q  # run the full suite (371 tests)
+python -m pytest -q  # run the full suite (377 tests)
 pip-audit -r requirements.txt   # supply-chain audit
 ```
 

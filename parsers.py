@@ -353,11 +353,23 @@ def annotate_fuzz_result(parsed: dict) -> dict:
     """
     if not isinstance(parsed, dict) or parsed.get("parse_error"):
         return parsed
-    if parsed.get("partial"):
+    if parsed.get("parse_warning"):
+        # A parse failure is a different problem from an empty target, and
+        # saying "the site may be empty" when the truth is "I could not read
+        # the output" would send the reader in exactly the wrong direction.
+        parsed["result"] = parsed["parse_warning"]
+    elif parsed.get("partial"):
         parsed["result"] = PARTIAL_SCAN_NOTE
     elif not parsed.get("results"):
         parsed["result"] = EMPTY_SCAN_NOTE
     return parsed
+
+
+# A line that is clearly a gobuster result, whatever its exact shape. Used only
+# to detect that the format has moved: if lines look like results but the real
+# pattern cannot read them, the parser is out of date and must say so rather
+# than report an empty scan.
+_GOBUSTER_RESULTISH = re.compile(r"\(Status:\s*\d{3}\)")
 
 
 def parse_gobuster(text: str) -> dict:
@@ -366,9 +378,18 @@ def parse_gobuster(text: str) -> dict:
     format is simple and stable: `/admin (Status: 301) [Size: 240]`.
     """
     out = {"results": [], "count": 0}
+    unreadable = 0
     for line in (text or "").splitlines():
-        m = _GOBUSTER_LINE.match(line.strip())
+        stripped = line.strip()
+        m = _GOBUSTER_LINE.match(stripped)
         if not m:
+            # Distinguish "not a result line" from "a result line I cannot
+            # read". The second means gobuster's format has changed under us,
+            # which is exactly how this parser silently returned nothing for
+            # eight releases. Counting it makes the next change visible on the
+            # first run instead of never.
+            if _GOBUSTER_RESULTISH.search(stripped):
+                unreadable += 1
             continue
         path = m.group("path")
         entry = {
@@ -379,7 +400,34 @@ def parse_gobuster(text: str) -> dict:
         if m.group("redirect"):
             entry["redirect"] = m.group("redirect").strip()
         out["results"].append(entry)
+    # Broader safety net: a format change that drops the "(Status:" marker
+    # entirely would slip past the check above and still look like an empty
+    # scan. A tool that printed plenty of output and yielded zero results is
+    # suspicious whatever the format, so count the lines that are neither
+    # blank nor recognisable banner furniture.
+    if not out["results"] and not unreadable:
+        substantive = [
+            ln for ln in (text or "").splitlines()
+            if ln.strip()
+            and set(ln.strip()) != {"="}          # separator rule, not content
+            and not ln.lstrip().startswith(("[+]", "Progress:", "[ERROR]"))
+            and "gobuster" not in ln.lower()
+            and not ln.strip().startswith(("Starting", "Finished", "by "))
+        ]
+        if len(substantive) >= 3:
+            unreadable = len(substantive)
+
     out["count"] = len(out["results"])
+    if unreadable:
+        out["unreadable_lines"] = unreadable
+        out["parse_warning"] = (
+            f"{unreadable} line(s) of gobuster output look like results but "
+            f"could not be read by this parser - its output format has probably "
+            f"changed. The paths in those lines are MISSING from these results, "
+            f"so do not treat this as a complete scan. Check the raw output in "
+            f"the report, and request specific paths with fetch_page instead of "
+            f"trusting this list."
+        )
     return annotate_fuzz_result(out)
 
 

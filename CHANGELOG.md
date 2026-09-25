@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.9] - 2026-09-13
+
+Added: **The gobuster parser now detects that it cannot read the output**, rather than reporting an empty scan. Two checks: a line containing `(Status:` that the pattern cannot match is counted as unreadable, and output with several substantive lines but zero parsed results is flagged whatever its shape. Either produces a warning that says the paths are MISSING and the scan is not complete — the dangerous reading being "the site has nothing there".
+
+This does not make the parser handle unknown versions; nothing can, without a capture of them. It makes the next format change visible on the first run instead of hiding for eight releases as the last one did. A genuinely empty scan is still reported as an empty scan, because that needs a different response — redeploy the box, versus fix the parser.
+
+Tests: 6 new (377 total).
+
 ## [0.5.8] - 2026-09-13
 
 Fixed: **The gobuster parser never matched real gobuster output.** gobuster 3.8.2 prints the bare word — `admin   (Status: 301) [Size: 236] [--> http://host/admin/]` — and the parser required a leading slash. Every line failed to match, so a scan that found 44 paths, including all 11 `wp-*` entries, was reported as finding none. Broken since v0.4.0.

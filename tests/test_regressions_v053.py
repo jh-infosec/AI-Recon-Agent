@@ -555,3 +555,76 @@ def test_a_real_scan_is_not_annotated_as_empty():
     """The empty-scan note must not fire on a scan that found forty-four paths."""
     r = parsers.parse_gobuster(REAL_GOBUSTER_OUTPUT)
     assert "result" not in r
+
+
+# --------------------------------------------------------------------------- #
+# v0.5.9 - a format change must be loud, not silent
+#
+# The v0.5.8 fix handles gobuster 3.8.2. It cannot handle a format this parser
+# has never seen, and no amount of guessing at future versions would fix that.
+# What it can do is stop a mismatch looking like an empty result, which is how
+# the last one hid for eight releases.
+# --------------------------------------------------------------------------- #
+def test_unreadable_result_lines_are_counted_not_ignored():
+    """A line with (Status:) that the pattern cannot read means the format moved."""
+    r = parsers.parse_gobuster(
+        "[301] admin (Status: 301) [Size: 236]\n"
+        "[200] wp-login (Status: 200) [Size: 2693]\n"
+    )
+    assert r["count"] == 0
+    assert r["unreadable_lines"] == 2
+    assert "format has probably changed" in r["parse_warning"]
+
+
+def test_a_wholly_unfamiliar_format_is_still_caught():
+    """Even without the (Status:) marker, output with no results is suspicious."""
+    r = parsers.parse_gobuster(
+        "Gobuster v9.0\n"
+        "=> admin | Status=301 | Size=236\n"
+        "=> wp-login | Status=200 | Size=2693\n"
+        "=> wp-admin | Status=301 | Size=239\n"
+    )
+    assert r.get("parse_warning")
+
+
+def test_a_genuinely_empty_scan_is_not_called_a_format_change():
+    """
+    The two need different responses - redeploy the box versus fix the parser -
+    so conflating them would send the reader the wrong way.
+    """
+    r = parsers.parse_gobuster(
+        "===============================================================\n"
+        "Gobuster v3.8.2\n"
+        "[+] Url:                     http://10.0.0.1:80\n"
+        "[+] Threads:                 20\n"
+        "===============================================================\n"
+        "Starting gobuster in directory enumeration mode\n"
+        "===============================================================\n"
+        "Progress: 4613 / 4613 (100.00%)\n"
+        "===============================================================\n"
+        "Finished\n"
+        "===============================================================\n"
+    )
+    assert not r.get("parse_warning")
+    assert "NO paths" in r["result"]
+
+
+def test_a_successful_scan_raises_no_warning():
+    r = parsers.parse_gobuster(REAL_GOBUSTER_OUTPUT)
+    assert not r.get("parse_warning")
+    assert r["count"] == 44
+
+
+def test_the_warning_says_results_are_missing_not_absent():
+    """The dangerous reading is 'the site has nothing there'."""
+    r = parsers.parse_gobuster("[301] admin (Status: 301) [Size: 236]\n" * 3)
+    assert "MISSING" in r["parse_warning"]
+    assert "not a complete scan" in r["parse_warning"] or "complete scan" in r["parse_warning"]
+
+
+def test_the_warning_reaches_the_console():
+    import console
+    r = parsers.parse_gobuster("[301] admin (Status: 301) [Size: 236]\n" * 3)
+    lines = console.highlights("run_gobuster", r)
+    assert lines and lines[0].startswith("!")
+    assert "could not be read" in lines[0]
