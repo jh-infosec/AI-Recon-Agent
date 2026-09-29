@@ -1,0 +1,4 @@
+; <<>> DiG 9.20.27-1-Debian <<>> @1.1.1.1 example.com AXFR
+; (1 server found)
+;; global options: +cmd
+; Transfer failed.

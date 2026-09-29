@@ -1,6 +1,6 @@
 # ai-recon-agent
 
-**v0.5.10**
+**v0.5.11**
 
 ai-recon-agent is a small security study kit with two halves: a **red-team
 recon agent** for practicing enumeration on machines you're authorized to
@@ -146,6 +146,8 @@ config/targets.example.yaml - template; copy to targets.yaml (gitignored)
 samples/                  - synthetic logs for the hunt agent (safe to run)
 reports/                  - generated reports land here (git-ignored)
 tests/                    - pytest suites: safety gate, workspace lock, regressions
+tests/fixtures/real/      - verbatim tool output the parser tests read (never hand-edited)
+tests/fixtures/capture_fixtures.sh - re-captures it against a local web server
 pyproject.toml            - ruff + pytest config
 requirements.txt          - runtime deps       requirements-dev.txt - dev/CI deps
 .github/workflows/ci.yml  - lints, tests, and audits deps on push
@@ -159,7 +161,7 @@ architecture.md           - design principles, constraints, cleared defects
 ```bash
 pip install -r requirements-dev.txt
 ruff check .      # lint
-python -m pytest -q  # run the full suite (383 tests)
+python -m pytest -q  # run the full suite (439 tests)
 pip-audit -r requirements.txt   # supply-chain audit
 ```
 

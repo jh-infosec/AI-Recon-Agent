@@ -72,6 +72,6 @@ def test_scan_guidance_notes_have_no_long_dashes():
     """These strings are written for the model and printed to the terminal."""
     import parsers
 
-    for note in (parsers.EMPTY_SCAN_NOTE, parsers.PARTIAL_SCAN_NOTE):
+    for note in (parsers.EMPTY_SCAN_NOTE, parsers.PARTIAL_SCAN_NOTE, parsers.EMPTY_VHOST_NOTE):
         for char, name in BANNED.items():
             assert char not in note, name

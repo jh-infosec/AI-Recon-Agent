@@ -217,6 +217,8 @@ def highlights(tool_name: str, parsed: dict) -> list:
                 if p.get("state") != "open":
                     continue
                 bits = [x for x in (p.get("product"), p.get("version")) if x]
+                if p.get("extrainfo"):
+                    bits.append(f"[{p['extrainfo']}]")
                 svc = p.get("service") or "?"
                 if p.get("tunnel") == "ssl":
                     svc += "/ssl"
@@ -235,10 +237,15 @@ def highlights(tool_name: str, parsed: dict) -> list:
             if _is_server_default(name, status):
                 suppressed += 1
                 continue
+            # Where a redirect goes is often the finding: /admin -> /admin/
+            # is a directory, /admin -> /login.php is a wall. gobuster has
+            # supplied it since v0.5.8 and ffuf all along; nothing showed it.
+            target = f" -> {r['redirect']}" if r.get("redirect") else ""
             rows.append((
                 _path_rank(status),
                 f"{name}  [status {status}"
-                + (f", size {size}]" if size is not None else "]"),
+                + (f", size {size}]" if size is not None else "]")
+                + target,
             ))
         rows.sort(key=lambda x: x[0])
         out = [text for _, text in rows]
@@ -287,16 +294,32 @@ def highlights(tool_name: str, parsed: dict) -> list:
     elif tool_name == "run_dns_enum":
         if parsed.get("axfr_succeeded"):
             out.append("zone transfer (AXFR) succeeded")
+        elif parsed.get("axfr_refused"):
+            out.append("zone transfer (AXFR) refused")
+        # NOERROR is the unremarkable case; anything else explains an empty
+        # answer (NXDOMAIN: no such name, REFUSED: not answering for us).
+        for status in dict.fromkeys(parsed.get("statuses") or []):
+            if status != "NOERROR":
+                out.append(f"dns status: {status}")
         for name in parsed.get("hostnames", [])[:10]:
             out.append(f"hostname: {name}")
 
     # A scan that found nothing prints nothing, so the operator sees a bare
     # tool call and cannot tell it apart from a crash. The model already gets
     # this note in its payload; showing it here keeps the two in step.
+    #
+    # A partial scan or a parse warning is different: it qualifies the results
+    # that DID print, so it goes first, whatever else is shown, where the cap
+    # below cannot cut it off. Before v0.5.11 it only printed when nothing else
+    # did, so a cut-short scan with results looked complete.
     note_text = (parsed or {}).get("result")
-    if note_text and not out:
+    qualifies = bool((parsed or {}).get("partial") or (parsed or {}).get("parse_warning"))
+    if note_text and (qualifies or not out):
         first = note_text.split(". ")[0]
-        out.append(f"!{first}.")
+        if qualifies:
+            out.insert(0, f"!{first}.")
+        else:
+            out.append(f"!{first}.")
 
     if len(out) > MAX_HIGHLIGHTS:
         extra = len(out) - MAX_HIGHLIGHTS

@@ -302,6 +302,7 @@ def run_ffuf(
             result["parsed"] = parsers.parse_ffuf_json(_read_json_file(outfile))
             if result.get("timed_out") and result["parsed"].get("results"):
                 result["parsed"]["partial"] = True
+                parsers.annotate_fuzz_result(result["parsed"])
                 result["timed_out"] = False
         return result
 
@@ -342,6 +343,10 @@ def run_ffuf(
         result["parsed"] = parsers.parse_ffuf_json(_read_json_file(outfile))
         if result.get("timed_out") and result["parsed"].get("results"):
             result["parsed"]["partial"] = True
+            # The parser attached its note before `partial` existed, so it
+            # has to be attached again now that it does. Without this the
+            # console printed a cut-short scan as a complete one.
+            parsers.annotate_fuzz_result(result["parsed"])
             result["timed_out"] = False
             result["stderr"] = (
                 f"Scan hit the {FFUF_MAXTIME}s limit and was cut short; the "

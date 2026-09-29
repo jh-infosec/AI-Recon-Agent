@@ -1,0 +1,18 @@
+; <<>> DiG 9.20.27-1-Debian <<>> @1.1.1.1 example.com ANY
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOTIMP, id: 11674
+;; flags: qr rd ra; QUERY: 1, ANSWER: 0, AUTHORITY: 0, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+; EDE: 21 (Not Supported)
+;; QUESTION SECTION:
+;example.com.			IN	ANY
+
+;; Query time: 15 msec
+;; SERVER: 1.1.1.1#53(1.1.1.1) (TCP)
+;; WHEN: Tue Sep 29 11:32:11 SAST 2026
+;; MSG SIZE  rcvd: 46
+

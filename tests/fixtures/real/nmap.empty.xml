@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<?xml-stylesheet href="file:///usr/share/nmap/nmap.xsl" type="text/xsl"?>
+<!-- Nmap 7.99 scan initiated Tue Sep 29 11:32:11 2026 as: /usr/lib/nmap/nmap -&#45;privileged -oX - -p 1,2,3 127.0.0.1 -->
+<nmaprun scanner="nmap" args="/usr/lib/nmap/nmap -&#45;privileged -oX - -p 1,2,3 127.0.0.1" start="1790674331" startstr="Tue Sep 29 11:32:11 2026" version="7.99" xmloutputversion="1.05">
+<scaninfo type="syn" protocol="tcp" numservices="3" services="1-3"/>
+<verbose level="0"/>
+<debugging level="0"/>
+<host starttime="1790674331" endtime="1790674331"><status state="up" reason="localhost-response" reason_ttl="0"/>
+<address addr="127.0.0.1" addrtype="ipv4"/>
+<hostnames>
+<hostname name="localhost" type="PTR"/>
+</hostnames>
+<ports><port protocol="tcp" portid="1"><state state="closed" reason="reset" reason_ttl="64"/><service name="tcpmux" method="table" conf="3"/></port>
+<port protocol="tcp" portid="2"><state state="closed" reason="reset" reason_ttl="64"/><service name="compressnet" method="table" conf="3"/></port>
+<port protocol="tcp" portid="3"><state state="closed" reason="reset" reason_ttl="64"/><service name="compressnet" method="table" conf="3"/></port>
+</ports>
+<times srtt="36" rttvar="2827" to="100000"/>
+</host>
+<runstats><finished time="1790674331" timestr="Tue Sep 29 11:32:11 2026" summary="Nmap done at Tue Sep 29 11:32:11 2026; 1 IP address (1 host up) scanned in 0.07 seconds" elapsed="0.07" exit="success"/><hosts up="1" down="0" total="1"/>
+</runstats>
+</nmaprun>

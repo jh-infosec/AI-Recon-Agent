@@ -191,6 +191,33 @@ it with the underlying tool before changing anything - it is faster, it is
 free, and unlike another agent run it produces evidence rather than another
 instance of the symptom.
 
+v0.5.11 applied this to every parser rather than only the one that had failed.
+All of their fixtures had been typed, and the whatweb parser had no test at
+all. Each tool was run against a throwaway local web server by
+`tests/fixtures/capture_fixtures.sh` and its output kept verbatim in
+`tests/fixtures/real/`, and reading the old parsers over those captures found
+four defects in an afternoon - none needing a lab box, a VPN or an API call.
+Parser tests read from that folder, and its README says what is still
+inferred rather than captured.
+
+### A check proven at the parser is not proven where it is used
+
+v0.5.9 taught the gobuster parser to notice a format change and say so, and
+its tests confirmed the parser said so. The console showed the warning. The
+model never saw it: `compact_for_model` carried its own copies of the notes
+and its empty-result branch ran last, so a format-change warning with zero
+readable results was replaced with "This scan found NO paths at all" - the
+very reading v0.5.9 existed to prevent, delivered to the one consumer that
+acts on it.
+
+A result here has three readers: the console, the report and the model. A
+note or warning is not delivered until a test reads it from each of them.
+Where a result is rewritten on its way to a reader, the rewrite must take its
+text from the same function as everyone else, never from a copy - copies that
+are identical today are a drift waiting to happen. Whitelisted views have the
+same failure in a quieter form: the DNS view named three keys, so every new
+field, including a warning, was dropped without a trace.
+
 ### An absence must be stated, not implied
 
 A tool that finds nothing has to say so. An empty list arriving as an absence
@@ -280,6 +307,14 @@ JSON, gobuster text, dig text. Every parser is total - it returns a dict with
 `parse_error` set rather than raising, because a format surprise from a tool
 whose output changes between versions must degrade the session rather than end
 it.
+
+Every parser also distinguishes "the tool found nothing" from "I could not
+read what the tool printed", and sets `parse_warning` for the second. Each
+uses whatever the format offers as ground truth: dig's header states its
+answer count, ffuf's document always has a `results` key, whatweb always
+reports some plugin for a target it reached, and nmap's root element is
+`<nmaprun>`. Notes attached to fuzz results come from one function,
+`annotate_fuzz_result`, whichever reader receives them.
 
 `render_markdown` and `render_html` turn a parsed result into a readable
 table for the report; `compact_for_model` renders it down to a payload budget
@@ -384,6 +419,9 @@ system. No real logs are committed.
 pytest suites concentrated on the two boundaries: the allowlist gate and the
 workspace lock. A regression in either is the only kind of bug in this project
 that could cause harm outside it.
+
+Parser tests read real tool output from `tests/fixtures/real/`, captured by
+`tests/fixtures/capture_fixtures.sh`. Never hand-edit those files; re-capture.
 
 ## Data Flow
 
@@ -598,6 +636,48 @@ Markdown. Fences are now sized to exceed the longest backtick run in the
 content. Reports are written UTF-8 explicitly rather than at the platform
 default. The two HTML footers hardcoded "v0.2.0" and "v0.3.0"; the version is
 now single-sourced in `version.py` and asserted by a test.
+
+
+Fixed in v0.5.11, found by running the parsers over real captures. Tests in
+`tests/test_regressions_v0511.py`.
+
+**DNS enumeration made the coverage gate unsatisfiable.** `parse_dig` treated
+every token that looked like a DNS name as a hostname, and an IPv4 address
+does. Each A record's address became a hostname, each hostname became a
+vhost-fuzzing obligation, and no fuzz could ever satisfy one, so any box with
+DNS open finished with exit code 3. The reverse lookup `run_dns_enum` always
+performs did the same with `in-addr.arpa` names. The old fixture contained an
+A record; its test checked that the real name was present and never that the
+address was absent. Hostnames now come only from record names and from the
+data of record types that hold one (NS, CNAME, PTR, MX, SRV, and the SOA
+mname), and the surface model refuses anything that cannot be a vhost
+whichever parser produced it. The MISS detail, which read "vhost fuzzing ran"
+beside a host that was never fuzzed, now names what was.
+
+**Format-change warnings never reached the model.** See "A check proven at
+the parser is not proven where it is used". `compact_for_model` now takes
+every note from `annotate_fuzz_result`, the nmap view lets a warning override
+the "no open ports" success message, and the DNS view carries status,
+refusal and warning.
+
+**An empty vhost fuzz was reported as a dying machine.** The only empty-result
+note was written for directory fuzzing: paths, expiring boxes, WordPress
+logins. For vhost fuzzing, finding nothing is the usual outcome. The mode is
+now read from ffuf's own config block and the note matches it.
+
+**ffuf's redirect target was discarded, under a comment saying ffuf does not
+supply one.** It does, as `redirectlocation`. Redirects from both fuzzers are
+now kept and shown on the console and in both reports; gobuster's had been
+captured since v0.5.8 and displayed nowhere.
+
+**A timed-out ffuf scan printed as complete.** `run_ffuf` set `partial` after
+the parser had attached its note, so the partial note never attached and the
+console printed a cut-short scan as a whole one. The note is re-attached
+after the flag is set, and qualifying notes print first so the highlight cap
+cannot drop them.
+
+**dig's response status was thrown away,** so NXDOMAIN, REFUSED, NOTIMP and a
+refused zone transfer all read as "no records". They are now reported.
 
 ## Accepted Designs
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.5.11] - 2026-09-29
+
+Every parser is now tested against real tool output. After the gobuster parser turned out to have been broken for eight releases by a hand-typed fixture, the obvious question was which other fixtures had been typed. All of them had, and the whatweb parser had no test at all. Each tool was run against a throwaway local web server (`tests/fixtures/capture_fixtures.sh`: no lab box, no VPN, no API credits) and its output kept verbatim in `tests/fixtures/real/`. Running the old parsers over those captures found the following.
+
+Fixed: **DNS enumeration made the coverage gate impossible to pass.** Every A record's IP address was recorded as a hostname, and every hostname becomes a "fuzz its virtual hosts" check that nothing can satisfy for an IP. Any box with port 53 open finished with exit code 3. The reverse lookup that runs on every DNS enum did the same with `.arpa` names. Hostnames now come only from record types that hold one, and the surface model refuses anything that cannot be a vhost whichever parser sent it.
+
+Fixed: **v0.5.9's format-change warning never reached the model.** The parser raised it and the console showed it, but `compact_for_model` kept its own copies of the notes and overwrote the warning with "This scan found NO paths at all", the exact reading v0.5.9 was built to prevent. It now takes every note from the same function as the console. The same function also turned an unreadable nmap run into "SCAN COMPLETED SUCCESSFULLY", and the DNS view dropped every field it did not name.
+
+Fixed: **An empty vhost fuzz was reported as a dying machine**, with advice about paths and WordPress logins. For vhost mode an empty result is normal. The mode is read from ffuf's own output and the note matches it.
+
+Fixed: **A timed-out ffuf scan printed as complete on the console.** The partial flag was set after the note was attached. Warnings and partial notes now print first, where the highlight cap cannot drop them.
+
+Fixed: The coverage MISS for an unfuzzed hostname said "vhost fuzzing ran". It now names what was fuzzed instead.
+
+Added: **Every parser distinguishes "found nothing" from "could not read the output"**, using whatever the format offers as ground truth: dig's header announces its answer count, ffuf always writes a `results` key, whatweb always reports a plugin, nmap's root is `<nmaprun>`.
+
+Added: Redirect targets from ffuf and gobuster on the console and in both reports (`admin -> /admin/`). ffuf supplies `redirectlocation`; the v0.5.8 entry below saying it does not was wrong. Also nmap's `extrainfo` (often the only OS hint), ffuf's content type and learned calibration filter, and dig's response status and refused zone transfers.
+
+Added: `tests/fixtures/capture_fixtures.sh` in the repo, now also capturing a PTR lookup and whatweb following a redirect, and writing a plain-text bundle because a tarball dragged out of a VMware guest arrives empty.
+
+Tests: 56 new (439 total). Every one aimed at a defect was run against v0.5.10 first and failed.
+
 ## [0.5.10] - 2026-09-13
 
 Changed: All em dashes removed from the project, 50 of them in this changelog, and replaced with hyphens. The rule covers everything the project produces: source, comments, docs, report text and terminal output.

@@ -1,0 +1,20 @@
+; <<>> DiG 9.20.27-1-Debian <<>> @1.1.1.1 thishostdoesnotexist.example A
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 13872
+;; flags: qr rd ra ad; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+;; QUESTION SECTION:
+;thishostdoesnotexist.example.	IN	A
+
+;; AUTHORITY SECTION:
+.			86400	IN	SOA	a.root-servers.net. nstld.verisign-grs.com. 2026092900 1800 900 604800 86400
+
+;; Query time: 47 msec
+;; SERVER: 1.1.1.1#53(1.1.1.1) (UDP)
+;; WHEN: Tue Sep 29 11:32:11 SAST 2026
+;; MSG SIZE  rcvd: 132
+

@@ -1,0 +1,21 @@
+===============================================================
+Gobuster v3.8.2
+by OJ Reeves (@TheColonial) & Christian Mehlmauer (@firefart)
+===============================================================
+[+] Url:                     http://127.0.0.1:8099
+[+] Method:                  GET
+[+] Threads:                 20
+[+] Wordlist:                /home/kali/fixtures-capture/wordlist.txt
+[+] Negative Status codes:   404
+[+] User Agent:              gobuster/3.8.2
+[+] Timeout:                 10s
+===============================================================
+Starting gobuster in directory enumeration mode
+===============================================================
+robots.txt           (Status: 200) [Size: 7]
+admin                (Status: 301) [Size: 0] [--> /admin/]
+uploads              (Status: 301) [Size: 0] [--> /uploads/]
+wp-admin             (Status: 301) [Size: 0] [--> /wp-admin/]
+===============================================================
+Finished
+===============================================================

@@ -51,6 +51,14 @@ def parse_nmap_xml(xml_text: str) -> dict:
         root = ET.fromstring(xml_text)
     except ET.ParseError as e:
         return {**out, "parse_error": f"nmap XML did not parse: {e}"}
+    if root.tag != "nmaprun":
+        # Well-formed XML that is not an nmap run would otherwise fall
+        # through to "no hosts, no open ports", which reads as a real result.
+        return {**out, "parse_warning": (
+            f"expected nmap XML (<nmaprun>) but got <{root.tag}> - this is "
+            f"not nmap output, or nmap's format has changed. It does NOT mean "
+            f"there are no open ports; check the raw output in the report."
+        )}
 
     for host in root.findall("host"):
         addr_el = host.find("address")
@@ -86,6 +94,10 @@ def parse_nmap_xml(xml_text: str) -> dict:
                 "service": svc.get("name") if svc is not None else None,
                 "product": svc.get("product") if svc is not None else None,
                 "version": svc.get("version") if svc is not None else None,
+                # extrainfo is where nmap puts "Ubuntu Linux; protocol 2.0" for
+                # OpenSSH, or the interpreter behind a web server: often the
+                # only OS hint in the scan.
+                "extrainfo": svc.get("extrainfo") if svc is not None else None,
                 "tunnel": svc.get("tunnel") if svc is not None else None,
                 "scripts": scripts,
             }
@@ -133,6 +145,8 @@ def _nmap_view(parsed: dict, script_chars: int | None) -> dict:
                 "product": p.get("product"),
                 "version": p.get("version"),
             }
+            if p.get("extrainfo"):
+                entry["extrainfo"] = p["extrainfo"]
             if p.get("tunnel"):
                 entry["tunnel"] = p["tunnel"]
             scripts = p.get("scripts") or {}
@@ -182,7 +196,12 @@ def compact_for_model(tool_name: str, parsed: dict, budget: int = MODEL_PAYLOAD_
         # session responded to three of them by re-running the same scan three
         # times. Naming the result gives the model something to reason about
         # instead of a hole to fill with retries.
-        if not view["open_ports"]:
+        if parsed.get("parse_warning"):
+            # Checked first: an unreadable run also has no open ports, and
+            # calling it a successful empty scan is the opposite of the truth.
+            view["parse_warning"] = parsed["parse_warning"]
+            view["result"] = parsed["parse_warning"]
+        elif not view["open_ports"]:
             view["result"] = (
                 "SCAN COMPLETED SUCCESSFULLY AND FOUND NO OPEN PORTS. This is a "
                 "real result, not an error, and re-running the same scan will "
@@ -209,51 +228,37 @@ def compact_for_model(tool_name: str, parsed: dict, budget: int = MODEL_PAYLOAD_
             view = {"count": parsed.get("count", len(results)),
                     "results": results[:50], "truncated": True}
 
-        if parsed.get("result"):
-            view["result"] = parsed["result"]
+        # Every note comes from annotate_fuzz_result, the same function that
+        # feeds the console. This block used to carry its own copies of the
+        # partial and empty notes, and its empty branch ran last, so it
+        # overwrote whatever the parser had attached: v0.5.9's format-change
+        # warning reached the console and the model was told "found NO paths"
+        # instead. Precedence lives in one place now: warning, then partial,
+        # then empty (mode-aware).
+        annotated = annotate_fuzz_result(dict(parsed))
+        if annotated.get("result"):
+            view["result"] = annotated["result"]
         if parsed.get("partial"):
             view["partial"] = True
-            view["result"] = (
-                "PARTIAL: the scan hit its time limit and these are the paths it "
-                "reached, not the complete set - MISSING DOES NOT MEAN ABSENT. "
-                "Wordlists are alphabetical, so anything late in the alphabet was "
-                "probably never tried; a scan cut off at 'f' says nothing about "
-                "wp-login.php. A healthy lab box completes this wordlist in about "
-                "100 seconds, so hitting the limit suggests the target has slowed "
-                "down - on THM/HTB that usually means the machine is expiring. "
-                "Check it is still up before drawing conclusions, and prefer "
-                "fetching specific paths you have reason to suspect over "
-                "re-running the sweep."
-            )
-        elif not results:
-            # Same reasoning as the empty nmap result: an absence that might be
-            # a failure has to say so. A directory scan finding literally
-            # nothing on a live web server is unusual - on Mr Robot, gobuster
-            # returned nothing on a site that plainly had content, and the
-            # empty result was indistinguishable from "no hidden paths exist".
-            view["result"] = (
-                "This scan found NO paths at all. On a web server that is serving "
-                "pages that is unusual, and it is more often a problem with the "
-                "scan or the target than an empty site. The most common cause on "
-                "a lab platform is that THE MACHINE HAS EXPIRED OR IS DYING - "
-                "they degrade before they stop, so requests slow and then fail "
-                "while the box still looks reachable. Use fetch_page on / to "
-                "check whether the site responds at all; if it does not, the "
-                "target needs redeploying and nothing else here is meaningful. "
-                "If the site IS up, read it and follow what it tells you: "
-                "fetch_page on / and /robots.txt, then request the paths its "
-                "content, comments or technology stack imply - on a WordPress "
-                "site, /wp-login.php and similar, asked for directly rather than "
-                "brute-forced. Do not simply re-run the same scan."
-            )
+        for key in ("parse_warning", "mode", "calibration_filters"):
+            if parsed.get(key):
+                view[key] = parsed[key]
         return view
 
     if tool_name == "run_dns_enum":
-        return {
+        view = {
             "axfr_succeeded": parsed.get("axfr_succeeded"),
+            "axfr_refused": parsed.get("axfr_refused", False),
+            "statuses": parsed.get("statuses", []),
             "hostnames": parsed.get("hostnames", [])[:100],
             "records": parsed.get("records", [])[:100],
         }
+        # This view is a whitelist, so a key not named here never reaches the
+        # model. That is how the format-change warning would have been lost.
+        if parsed.get("parse_warning"):
+            view["parse_warning"] = parsed["parse_warning"]
+            view["result"] = parsed["parse_warning"]
+        return view
 
     return parsed
 
@@ -262,13 +267,21 @@ def parse_ffuf_json(json_text: str) -> dict:
     """
     Parse `ffuf -of json` output into:
 
-        {"results": [{"input", "status", "length", "words", "lines", "url"}],
-         "count": int}
+        {"results": [{"input", "status", "length", "words", "lines", "url",
+                      "host", "redirect"?, "content_type"?}],
+         "count": int,
+         "mode": "dir" | "vhost",
+         "calibration_filters": {...}?}
 
     ffuf's JSON nests the fuzzed value under `input` keyed by the wordlist
     keyword (FUZZ), so it is flattened to a plain string here.
+
+    The mode is read from ffuf's own config block rather than passed in: in
+    vhost mode FUZZ sits in a header and not in the URL. It matters because
+    an empty vhost fuzz is ordinary, while an empty directory fuzz is not, and
+    the two need different notes.
     """
-    out = {"results": [], "count": 0}
+    out = {"results": [], "count": 0, "mode": "dir"}
     text = (json_text or "").strip()
     if not text:
         return {**out, "parse_error": "empty ffuf output"}
@@ -276,25 +289,69 @@ def parse_ffuf_json(json_text: str) -> dict:
         data = json.loads(text)
     except json.JSONDecodeError as e:
         return {**out, "parse_error": f"ffuf JSON did not parse: {e}"}
+    if not isinstance(data, dict):
+        return {**out, "parse_error": "ffuf JSON was not an object"}
 
-    for r in data.get("results", []) or []:
+    cfg = data.get("config") if isinstance(data.get("config"), dict) else {}
+    headers = cfg.get("headers") if isinstance(cfg.get("headers"), dict) else {}
+    if "FUZZ" not in str(cfg.get("url", "")) and any("FUZZ" in str(v) for v in headers.values()):
+        out["mode"] = "vhost"
+    # With -ac, ffuf learns what the default response looks like and filters
+    # it. Reporting the learned filter explains an empty vhost result: every
+    # candidate came back as that default page.
+    filters = ((cfg.get("matchers") or {}).get("Filters") or {}) if isinstance(cfg.get("matchers"), dict) else {}
+    learned = {k: v.get("value") for k, v in filters.items() if isinstance(v, dict) and v.get("value")}
+    if learned:
+        out["calibration_filters"] = learned
+
+    unreadable = 0
+    if "results" not in data:
+        # ffuf 2.1.0 writes "results": [] on a run that matched nothing, so a
+        # document without the key at all is a different format, not an
+        # empty scan.
+        out["parse_warning"] = (
+            "ffuf's JSON has no 'results' key - its output format has probably "
+            "changed. This is NOT an empty scan: whatever ffuf found is missing "
+            "from these results. Check the raw output in the report."
+        )
+        return annotate_fuzz_result(out)
+
+    for r in data.get("results") or []:
+        if not isinstance(r, dict) or r.get("status") is None or r.get("input") is None:
+            unreadable += 1
+            continue
         raw_input = r.get("input")
         if isinstance(raw_input, dict):
-            value = raw_input.get("FUZZ") or next(iter(raw_input.values()), None)
+            value = raw_input.get("FUZZ") or next(
+                (v for k, v in raw_input.items() if k != "FFUFHASH"), None)
         else:
             value = raw_input
-        out["results"].append(
-            {
-                "input": value,
-                "status": r.get("status"),
-                "length": r.get("length"),
-                "words": r.get("words"),
-                "lines": r.get("lines"),
-                "url": r.get("url"),
-                "host": r.get("host"),
-            }
-        )
+        entry = {
+            "input": value,
+            "status": r.get("status"),
+            "length": r.get("length"),
+            "words": r.get("words"),
+            "lines": r.get("lines"),
+            "url": r.get("url"),
+            "host": r.get("host"),
+        }
+        # Same key as gobuster uses. Where a 301 goes is often the finding:
+        # /admin -> /admin/ is a directory, /admin -> /login is a wall.
+        if r.get("redirectlocation"):
+            entry["redirect"] = r["redirectlocation"]
+        if r.get("content-type"):
+            entry["content_type"] = r["content-type"]
+        out["results"].append(entry)
+
     out["count"] = len(out["results"])
+    if unreadable:
+        out["unreadable_lines"] = unreadable
+        out["parse_warning"] = (
+            f"{unreadable} ffuf result(s) were missing a status or input and "
+            f"could not be read - ffuf's output format has probably changed. "
+            f"Those results are MISSING from this list, so do not treat it as "
+            f"a complete scan. Check the raw output in the report."
+        )
     return annotate_fuzz_result(out)
 
 
@@ -305,8 +362,9 @@ def parse_ffuf_json(json_text: str) -> dict:
 # none. That went unnoticed for eight releases because the test fixture was
 # written from the same wrong assumption as the parser.
 #
-# Both forms are accepted now, and the redirect target is captured - gobuster
-# supplies it and ffuf does not, and it says where a 301 actually goes.
+# Both forms are accepted now, and the redirect target is captured, because it
+# says where a 301 actually goes. (A comment here used to claim ffuf does not
+# supply one. It does, as `redirectlocation`; parse_ffuf_json keeps it too.)
 _GOBUSTER_LINE = re.compile(
     r"^(?P<path>/?[^\s(]+)\s+\(Status:\s*(?P<status>\d{3})\)"
     r"(?:\s*\[Size:\s*(?P<size>\d+)\])?"
@@ -328,6 +386,15 @@ EMPTY_SCAN_NOTE = (
     "asked for directly rather than brute-forced. Do not simply re-run the "
     "same scan."
 )
+
+EMPTY_VHOST_NOTE = (
+    "No virtual hosts found. For a vhost fuzz that is a normal result, not a "
+    "fault: most machines serve a single site, and autocalibration filtered "
+    "out every candidate that came back as the server's default page (see "
+    "calibration_filters). It is not a sign the target is down. Do not re-run "
+    "the same wordlist; continue with the site that is already known."
+)
+
 
 PARTIAL_SCAN_NOTE = (
     "PARTIAL: the scan hit its time limit and these are the paths it reached, "
@@ -361,7 +428,11 @@ def annotate_fuzz_result(parsed: dict) -> dict:
     elif parsed.get("partial"):
         parsed["result"] = PARTIAL_SCAN_NOTE
     elif not parsed.get("results"):
-        parsed["result"] = EMPTY_SCAN_NOTE
+        # An empty vhost fuzz is the common case, not a warning sign, and the
+        # directory note (paths, dying machines, WordPress logins) is wrong
+        # for it in every sentence.
+        parsed["result"] = (EMPTY_VHOST_NOTE if parsed.get("mode") == "vhost"
+                            else EMPTY_SCAN_NOTE)
     return parsed
 
 
@@ -480,12 +551,56 @@ def parse_whatweb_json(json_text: str) -> dict:
             for v in values:
                 if v not in existing:
                     existing.append(v)
+
+    # whatweb 0.6.4 always reports at least IP and HTTPServer for a target it
+    # reached, so objects that parse but carry no `plugins` mapping mean the
+    # log format has moved, not that the site has no fingerprint.
+    readable = [o for o in objs if isinstance(o, dict)]
+    if readable and not any(isinstance(o.get("plugins"), dict) for o in readable):
+        out["parse_warning"] = (
+            f"whatweb returned {len(readable)} target object(s) but none had a "
+            f"'plugins' section this parser could read - whatweb's log format "
+            f"has probably changed. The fingerprint is MISSING, not empty; "
+            f"check the raw output in the report."
+        )
     return out
 
 
 _DIG_ANSWER = re.compile(
     r"^(?P<name>\S+)\.\s+\d+\s+IN\s+(?P<type>[A-Z]+)\s+(?P<data>.+)$", re.MULTILINE
 )
+# ";; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 13872"
+_DIG_STATUS = re.compile(r"->>HEADER<<-.*?\bstatus:\s*([A-Z]+)")
+# ";; flags: qr rd ra; QUERY: 1, ANSWER: 2, AUTHORITY: 0, ADDITIONAL: 1"
+_DIG_ANSWER_COUNT = re.compile(r"^;; flags:.*?\bANSWER:\s*(\d+)", re.MULTILINE)
+_IPV4 = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
+# One or more labels. Single-label names (localhost, ip-10-10-1-1) are kept so
+# the coverage gate can report them as infrastructure and skip them visibly.
+_DNS_NAME = re.compile(r"^[A-Za-z0-9_](?:[A-Za-z0-9_\-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9_](?:[A-Za-z0-9_\-]*[A-Za-z0-9])?)*$")
+
+# Which token of a record's data is a hostname. A and AAAA data are addresses
+# and TXT data is free text, so they are absent on purpose. SOA data is
+# "mname rname serial ...", and the rname is a mailbox written with a dot for
+# the @ (root.box.htb means root@box.htb), so only the first token counts.
+_HOSTNAME_IN_DATA = {"NS": 0, "CNAME": 0, "PTR": 0, "DNAME": 0, "SOA": 0, "MX": -1, "SRV": -1}
+
+
+def is_vhost_candidate(name: str) -> bool:
+    """
+    True if `name` could be a virtual host: a DNS name that is not an IP
+    address written as a hostname and not a reverse-lookup name.
+
+    An IP address is never a vhost, and a name under in-addr.arpa or ip6.arpa
+    exists only to map an address back to a name. Before v0.5.11 both reached
+    the coverage gate as hostnames, where each produced a vhost check that no
+    amount of fuzzing could satisfy.
+    """
+    name = (name or "").strip().rstrip(".").lower()
+    if not name or _IPV4.match(name) or ":" in name:
+        return False
+    if name.endswith((".in-addr.arpa", ".ip6.arpa")):
+        return False
+    return bool(_DNS_NAME.match(name))
 
 
 def parse_dig(text: str) -> dict:
@@ -493,25 +608,62 @@ def parse_dig(text: str) -> dict:
     Pull answer records out of dig output, and flag whether a zone transfer
     appears to have succeeded - an AXFR that returns SOA plus records is a
     high-value finding the surface model should know about.
+
+        {"records": [{"name", "type", "data"}],
+         "hostnames": [str],          # only names that could be vhosts
+         "statuses": [str],           # NOERROR / NXDOMAIN / REFUSED / NOTIMP ...
+         "axfr_succeeded": bool,
+         "axfr_refused": bool}
+
+    `text` may hold several dig runs joined together, which is what
+    run_dns_enum passes in, so statuses is a list with one entry per query
+    that got a response header.
     """
-    out = {"records": [], "hostnames": [], "axfr_succeeded": False}
-    for m in _DIG_ANSWER.finditer(text or ""):
+    text = text or ""
+    out = {"records": [], "hostnames": [], "statuses": [],
+           "axfr_succeeded": False, "axfr_refused": False}
+
+    for m in _DIG_ANSWER.finditer(text):
         rec = {
             "name": m.group("name"),
             "type": m.group("type"),
             "data": m.group("data").strip(),
         }
         out["records"].append(rec)
-        for candidate in (rec["name"], rec["data"].rstrip(".")):
-            if re.fullmatch(r"[A-Za-z0-9.\-]+", candidate or "") and "." in candidate:
+        candidates = [rec["name"]]
+        idx = _HOSTNAME_IN_DATA.get(rec["type"])
+        if idx is not None:
+            tokens = rec["data"].split()
+            if tokens:
+                candidates.append(tokens[idx])
+        for candidate in candidates:
+            if is_vhost_candidate(candidate):
                 host = candidate.rstrip(".")
                 if host not in out["hostnames"]:
                     out["hostnames"].append(host)
+
+    out["statuses"] = _DIG_STATUS.findall(text)
+    # A refused or failed AXFR has no header at all: dig 9.20 prints
+    # "; Transfer failed." and exits 0, so without this line a refusal is
+    # indistinguishable from dig printing nothing.
+    out["axfr_refused"] = "; Transfer failed." in text
 
     types = {r["type"] for r in out["records"]}
     # A successful AXFR returns the SOA twice with the zone in between; the
     # presence of SOA alongside other record types is the practical signal.
     out["axfr_succeeded"] = "SOA" in types and len(types) > 1
+
+    # Format-change check. dig's header states how many answers it received,
+    # so if the header says there were answers and none could be read, the
+    # answer layout has moved and the result is not "no records".
+    announced = sum(int(n) for n in _DIG_ANSWER_COUNT.findall(text))
+    if announced and not out["records"]:
+        out["parse_warning"] = (
+            f"dig reported {announced} answer record(s) but this parser could "
+            f"read none of them - dig's output format has probably changed. "
+            f"The records are MISSING from these results; read the raw output "
+            f"in the report instead of treating this as an empty lookup."
+        )
     return out
 
 
@@ -581,6 +733,8 @@ def render_markdown(tool_name: str, parsed: dict) -> str:
         for r in results[:100]:
             name = r.get("input") if is_ffuf else r.get("path")
             size = r.get("length") if is_ffuf else r.get("size")
+            if r.get("redirect"):
+                name = f"{name} -> {r['redirect']}"
             out.append(f"| {name} | {r.get('status')} | {size if size is not None else '-'} |")
         if len(results) > 100:
             out.append("")
@@ -661,7 +815,8 @@ def render_html(tool_name: str, parsed: dict) -> str:
         is_ffuf = "input" in results[0]
         rows = [
             [
-                r.get("input") if is_ffuf else r.get("path"),
+                (r.get("input") if is_ffuf else r.get("path"))
+                + (f" -> {r['redirect']}" if r.get("redirect") else ""),
                 r.get("status"),
                 (r.get("length") if is_ffuf else r.get("size")) or "-",
             ]

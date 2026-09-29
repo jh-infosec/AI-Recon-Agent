@@ -28,6 +28,8 @@ because the methodology is what is being learned.
 import re
 from dataclasses import dataclass, field
 
+from parsers import is_vhost_candidate
+
 # Services that mean "there is a web server here" once nmap has identified
 # them. `tunnel="ssl"` on an http service is how nmap reports HTTPS.
 WEB_SERVICES = {"http", "https", "http-alt", "http-proxy", "https-alt"}
@@ -179,8 +181,7 @@ class AttackSurface:
                         self.non_content_http[port] = why
                     if svc == "domain" or port == 53:
                         self.dns_open = True
-            for name in parsed.get("hostnames", []):
-                self.hostnames.add(name)
+            self._add_hostnames(parsed)
 
         elif tool_name == "run_whatweb":
             self.fingerprinted.add(int(tool_input.get("port", 80)))
@@ -198,13 +199,21 @@ class AttackSurface:
 
         elif tool_name == "run_dns_enum":
             self.dns_enumerated = True
-            for name in parsed.get("hostnames", []):
-                self.hostnames.add(name)
+            self._add_hostnames(parsed)
 
         elif tool_name == "searchsploit_lookup":
             q = (tool_input.get("query") or "").strip()
             if q:
                 self.searchsploit_queries.append(q)
+
+    def _add_hostnames(self, parsed: dict) -> None:
+        # Every hostname becomes a vhost-fuzzing obligation in the coverage
+        # gate, so anything that cannot be a vhost is refused here, whichever
+        # parser produced it. parse_dig used to pass A-record IPs through and
+        # each one became a MISS that nothing could satisfy.
+        for name in parsed.get("hostnames", []) or []:
+            if isinstance(name, str) and is_vhost_candidate(name):
+                self.hostnames.add(name.strip().rstrip("."))
 
     # --------------------------------------------------------------- summary
     def summary(self) -> dict:
@@ -311,12 +320,24 @@ def coverage(surface: AttackSurface) -> list:
             Check(
                 f"Virtual hosts fuzzed for {host}",
                 any(host in d or d in host for d in surface.vhost_fuzzed),
-                "vhost fuzzing ran" if surface.vhost_fuzzed
-                else f"hostname '{host}' was discovered but never used for vhost fuzzing",
+                _vhost_detail(host, surface.vhost_fuzzed),
             )
         )
 
     return checks
+
+
+def _vhost_detail(host: str, fuzzed: set) -> str:
+    # This used to read "vhost fuzzing ran" whenever ANY vhost fuzz had run,
+    # printed beside a MISS for a host that was never fuzzed. The detail has
+    # to describe this host, and on a miss say what was fuzzed instead.
+    matched = sorted(d for d in fuzzed if host in d or d in host)
+    if matched:
+        return f"vhost fuzzing ran against {', '.join(matched)}"
+    if fuzzed:
+        return (f"hostname '{host}' was discovered but vhost fuzzing only ran "
+                f"against {', '.join(sorted(fuzzed))}")
+    return f"hostname '{host}' was discovered but never used for vhost fuzzing"
 
 
 def coverage_summary(checks: list) -> dict:
