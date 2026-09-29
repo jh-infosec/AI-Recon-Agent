@@ -94,7 +94,7 @@ runs, which moves to v0.6.0.
 - A rerun reports change rather than rediscovering.
 - Coverage becomes cumulative across sessions.
 
-## v0.6.0 - playbooks
+## v0.6.1 - playbooks
 
 - Phase definitions as markdown under `playbooks/`, loaded on demand.
 - Knowledge injection scoped by `lookup()` against current findings rather

@@ -1,6 +1,6 @@
 # ai-recon-agent
 
-**v0.5.11**
+**v0.5.12**
 
 ai-recon-agent is a small security study kit with two halves: a **red-team
 recon agent** for practicing enumeration on machines you're authorized to
@@ -161,7 +161,7 @@ architecture.md           - design principles, constraints, cleared defects
 ```bash
 pip install -r requirements-dev.txt
 ruff check .      # lint
-python -m pytest -q  # run the full suite (439 tests)
+python -m pytest -q  # run the full suite (443 tests)
 pip-audit -r requirements.txt   # supply-chain audit
 ```
 
@@ -190,10 +190,10 @@ itself finished before it was.
 
 `ROADMAP.md` is the source of truth for what ships when, and
 `architecture.md` carries the design reasoning, the known constraints and a
-record of every defect cleared so far. In short: v0.4.0 gives the model
-structured tool output and adds a deterministic methodology coverage gate,
-v0.5.0 adds state across runs, and v0.8.0 is the purple-team feature that
-narrates a recon report and a hunt report of the same box from both sides.
+record of every defect cleared so far. In short: v0.6.0 adds state across
+runs, so a second session against a box builds on the first instead of
+starting cold, and v0.8.0 is the purple-team feature that narrates a recon
+report and a hunt report of the same box from both sides.
 
 Exploitation, payload generation and anything that writes to a target are
 explicitly not planned, at any version.

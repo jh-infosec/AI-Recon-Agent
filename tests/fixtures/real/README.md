@@ -25,12 +25,16 @@ the tool cannot share the parser's mistakes.
 | Tool     | Version              | Files |
 |----------|----------------------|-------|
 | ffuf     | 2.1.0-dev            | `ffuf.dir.json`, `ffuf.ext.json`, `ffuf.vhost.json`, `ffuf.zero.json` |
-| whatweb  | 0.6.4                | `whatweb.json` |
+| whatweb  | 0.6.4                | `whatweb.json`, `whatweb.redirect.json` |
 | gobuster | 3.8.2                | `gobuster.txt` |
 | nmap     | 7.99                 | `nmap.xml`, `nmap.empty.xml` |
-| dig      | 9.20.27-1-Debian     | `dig.a.txt`, `dig.any.txt`, `dig.axfr.txt`, `dig.nxdomain.txt` |
+| dig      | 9.20.27-1-Debian     | `dig.a.txt`, `dig.any.txt`, `dig.axfr.txt`, `dig.nxdomain.txt`, `dig.ptr.txt` |
 
-Platform: Kali GNU/Linux Rolling 2026.3, kernel 7.1.5. Captured 2026-09-29.
+Platform: Kali GNU/Linux Rolling 2026.3, kernel 7.1.5. Captured 2026-09-29
+(`dig.ptr.txt` and `whatweb.redirect.json` in a second run the same day).
+
+Result order differs between runs for gobuster and ffuf, so tests look
+results up by name, never by position.
 
 ## What each capture covers
 
@@ -44,6 +48,8 @@ Platform: Kali GNU/Linux Rolling 2026.3, kernel 7.1.5. Captured 2026-09-29.
 - `ffuf.zero.json`: dir mode that matches nothing. ffuf still writes a full
   document with `results: []` and its config, not an empty file.
 - `whatweb.json`: `--log-json` output. A JSON array with one object per line.
+- `whatweb.redirect.json`: whatweb following a 301. One object per hop, the
+  objects separated by a comma on a line of its own.
 - `gobuster.txt`: bare words, no leading slash, redirect targets in `[--> ]`.
 - `nmap.xml`: `-sV` with one open port and two closed.
 - `nmap.empty.xml`: every scanned port closed.
@@ -53,13 +59,13 @@ Platform: Kali GNU/Linux Rolling 2026.3, kernel 7.1.5. Captured 2026-09-29.
   nothing else, and still exits 0.
 - `dig.nxdomain.txt`: `status: NXDOMAIN` with the root SOA in the authority
   section, which must not be mistaken for a zone transfer.
+- `dig.ptr.txt`: a reverse lookup, as `run_dns_enum` runs against every
+  target. The record name is under `in-addr.arpa` and must not become a
+  hostname; the answer data is the real name.
 
 ## Not yet captured
 
 - A successful AXFR. Needs a DNS server that allows transfers; a lab box with
-  port 53 open is the realistic source.
-- A PTR answer (`dig -x`). The capture script now produces `dig.ptr.txt`;
-  the `.arpa` handling in `parse_dig` is inferred from the record format
-  until that capture is added here.
-- whatweb following a redirect, which should emit one object per hop. The
-  capture script now produces `whatweb.redirect.json`.
+  port 53 open is the realistic source. Until then `axfr_succeeded` rests on
+  the SOA-plus-other-records heuristic, and the MX and SOA hostname tests in
+  `test_regressions_v0511.py` are marked INFERRED.

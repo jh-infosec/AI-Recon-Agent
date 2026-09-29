@@ -56,6 +56,7 @@ def real(name: str) -> str:
     "ffuf.dir.json", "ffuf.ext.json", "ffuf.vhost.json", "ffuf.zero.json",
     "whatweb.json", "gobuster.txt", "nmap.xml", "nmap.empty.xml",
     "dig.a.txt", "dig.any.txt", "dig.axfr.txt", "dig.nxdomain.txt",
+    "dig.ptr.txt", "whatweb.redirect.json",
 ])
 def test_real_fixture_present_and_nonempty(name):
     assert (REAL / name).stat().st_size > 0
@@ -110,15 +111,26 @@ def test_dig_answer_the_parser_cannot_read_is_flagged():
 
 
 def test_dig_clean_output_has_no_warning():
-    for name in ("dig.a.txt", "dig.any.txt", "dig.axfr.txt", "dig.nxdomain.txt"):
+    for name in ("dig.a.txt", "dig.any.txt", "dig.axfr.txt", "dig.nxdomain.txt", "dig.ptr.txt"):
         assert "parse_warning" not in parsers.parse_dig(real(name)), name
 
 
 def test_dig_ptr_answer_yields_target_not_arpa_name():
-    """INFERRED: PTR line built in the exact column layout of dig.a.txt."""
-    text = "1.1.1.1.in-addr.arpa.\t1800\tIN\tPTR\tone.one.one.one.\n"
-    r = parsers.parse_dig(text)
+    """Captured in v0.5.12; v0.5.11 had to infer this record's layout."""
+    r = parsers.parse_dig(real("dig.ptr.txt"))
+    assert r["records"][0]["type"] == "PTR"
     assert r["hostnames"] == ["one.one.one.one"]
+    assert r["statuses"] == ["NOERROR"]
+    assert "parse_warning" not in r
+
+
+def test_dns_enum_reverse_lookup_adds_no_coverage_miss():
+    """run_dns_enum always runs `dig -x <target>`; its .arpa name is not a vhost."""
+    s = _web_surface()
+    s.ingest("run_dns_enum", {}, parsers.parse_dig(real("dig.ptr.txt")))
+    s.ingest("run_ffuf", {"mode": "vhost", "domain": "one.one.one.one"}, {"results": []})
+    assert not any("arpa" in c.name for c in coverage(s))
+    assert [c.name for c in coverage(s) if not c.satisfied] == []
 
 
 def test_dig_mx_answer_yields_exchange_host():
@@ -258,6 +270,17 @@ def test_whatweb_object_without_plugins_is_flagged():
         obj.pop("plugins")
     r = parsers.parse_whatweb_json(json.dumps(doc))
     assert "parse_warning" in r
+
+
+def test_whatweb_following_a_redirect_reports_every_hop():
+    """Captured in v0.5.12: one object per hop, separated by a bare comma line."""
+    r = parsers.parse_whatweb_json(real("whatweb.redirect.json"))
+    assert r["targets"] == [
+        {"target": "http://127.0.0.1:8099/admin", "status": 301},
+        {"target": "http://127.0.0.1:8099/admin/", "status": 200},
+    ]
+    assert r["plugins"]["RedirectLocation"] == ["/admin/"]
+    assert "parse_warning" not in r
 
 
 def test_whatweb_newline_delimited_form_still_parses():

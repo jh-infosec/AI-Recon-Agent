@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.12] - 2026-09-29
+
+Tests only; no behaviour changes.
+
+Added: Two more real captures, from a second run of the capture script: a reverse DNS lookup (`dig.ptr.txt`) and whatweb following a redirect (`whatweb.redirect.json`). v0.5.11's handling of both was inferred from the record format. It turned out to be right, and is now tested against the real thing. The reverse lookup matters because `run_dns_enum` runs one against every target, and its `in-addr.arpa` name is what v0.5.11 stopped turning into an impossible coverage check.
+
+The second run also showed gobuster and ffuf return results in a different order each time; the tests already look results up by name, and the fixtures README now says why.
+
+Changed: ROADMAP.md had two headings numbered v0.6.0. Playbooks is now v0.6.1. The README's roadmap summary still said state across runs was v0.5.0; it is v0.6.0.
+
+Only a successful zone transfer remains uncaptured. It needs a lab box with port 53 open.
+
+Tests: 4 new (443 total).
+
 ## [0.5.11] - 2026-09-29
 
 Every parser is now tested against real tool output. After the gobuster parser turned out to have been broken for eight releases by a hand-typed fixture, the obvious question was which other fixtures had been typed. All of them had, and the whatweb parser had no test at all. Each tool was run against a throwaway local web server (`tests/fixtures/capture_fixtures.sh`: no lab box, no VPN, no API credits) and its output kept verbatim in `tests/fixtures/real/`. Running the old parsers over those captures found the following.

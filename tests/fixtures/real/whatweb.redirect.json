@@ -1,0 +1,5 @@
+[
+{"target":"http://127.0.0.1:8099/admin","http_status":301,"request_config":{"headers":{"User-Agent":"WhatWeb/0.6.4"}},"plugins":{"Country":{"string":["RESERVED"],"module":["ZZ"]},"HTTPServer":{"string":["SimpleHTTP/0.6 Python/3.14.6"]},"IP":{"string":["127.0.0.1"]},"Python":{"version":["3.14.6"]},"RedirectLocation":{"string":["/admin/"]}}}
+,
+{"target":"http://127.0.0.1:8099/admin/","http_status":200,"request_config":{"headers":{"User-Agent":"WhatWeb/0.6.4"}},"plugins":{"Country":{"string":["RESERVED"],"module":["ZZ"]},"HTTPServer":{"string":["SimpleHTTP/0.6 Python/3.14.6"]},"IP":{"string":["127.0.0.1"]},"Python":{"version":["3.14.6"]}}}
+]
