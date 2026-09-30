@@ -679,6 +679,20 @@ cannot drop them.
 **dig's response status was thrown away,** so NXDOMAIN, REFUSED, NOTIMP and a
 refused zone transfer all read as "no records". They are now reported.
 
+Fixed in v0.5.13.
+
+**The style test scanned from the wrong root when run from outside the repo.**
+Its root was `Path(__file__).parent.parent`, unresolved, so a relative
+`tests/test_style.py` gave a root of `.`, and `rglob` walked the current
+directory. From the repo that passed; from a home directory it walked the whole
+tree and failed on dependency and editor files. The test written to enforce
+"an absence must be stated" and to guard the project's own text was itself a
+check that passed only because of where it was run. The root is resolved to an
+absolute path now, and the file set comes from `git ls-files` so it is the
+tracked project, not whatever directory happens to be current. The general
+point: a test that reads files must anchor to the repo by resolved path, never
+by a path relative to the working directory.
+
 ## Accepted Designs
 
 Decided, not yet built. Recorded so the implementation has something to be

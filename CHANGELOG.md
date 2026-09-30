@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.13] - 2026-09-29
+
+Fixed: **The style test scanned the wrong directory when run from outside the repo.** It set its scan root to `Path(__file__).parent.parent` without resolving the path first. Run from inside the repo that was the repo; run with `python -m pytest` from your home directory, the relative path collapsed to `.` and it walked all of `~`, failing on em dashes in pip's vendored packages, VS Code extensions and old lab files. The test that exists to catch "a check that passes for the wrong reason" had that bug itself, and it hid because every prior run happened from inside the repo.
+
+Two independent fixes: the root is now `Path(__file__).resolve().parent.parent`, absolute whatever the working directory, and the file list comes from `git ls-files` so it is scoped to tracked project files rather than a directory walk. A bounded walk with a skip-list is kept as a fallback for a non-git tree, such as an unpacked release zip. One consequence worth knowing: under git, a new file is style-checked once you `git add` it, not before.
+
+Verified by running the suite from the home directory with a decoy em-dash file present: it passes, where before it failed, and it still catches a real em dash in a tracked project file.
+
+Tests only; no change to the agent. Tests: 443 total.
+
 ## [0.5.12] - 2026-09-29
 
 Tests only; no behaviour changes.

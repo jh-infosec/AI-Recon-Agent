@@ -1,6 +1,6 @@
 # ai-recon-agent
 
-**v0.5.12**
+**v0.5.13**
 
 ai-recon-agent is a small security study kit with two halves: a **red-team
 recon agent** for practicing enumeration on machines you're authorized to
