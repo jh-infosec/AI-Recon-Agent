@@ -192,6 +192,12 @@ class AttackSurface:
     # tell them apart or it reports work that did not happen.
     enum_outcome: dict = field(default_factory=dict)
     fingerprint_outcome: dict = field(default_factory=dict)
+    # Ports where a page fetch actually came back with an HTTP status. This is
+    # independent proof the service answers, and it changes what an empty
+    # enumeration means: telling someone to "check the target is up" after
+    # their own session already fetched a 200 from it is advice that wastes
+    # their time.
+    responded: dict = field(default_factory=dict)
     # port -> {path: status}. Fuzz results are the other half of the surface:
     # a port is where the application listens, a path is what it exposes, and
     # a rerun that cannot say "this path is new" is not reporting change.
@@ -279,6 +285,11 @@ class AttackSurface:
             self.dns_enumerated = True
             self._add_hostnames(parsed)
 
+        elif tool_name == "fetch_page":
+            status = parsed.get("status")
+            if isinstance(status, int) and status > 0:
+                self.responded[int(tool_input.get("port", 80))] = status
+
         elif tool_name == "searchsploit_lookup":
             q = (tool_input.get("query") or "").strip()
             if q:
@@ -353,7 +364,12 @@ class AttackSurface:
         # each one became a MISS that nothing could satisfy.
         for name in parsed.get("hostnames", []) or []:
             if isinstance(name, str) and is_vhost_candidate(name):
-                self.hostnames.add(name.strip().rstrip("."))
+                # Lowercased because DNS is case-insensitive. On a live domain
+                # controller nmap reported AttacktiveDirectory.spookysec.local
+                # and dig reported attacktivedirectory.spookysec.local, and the
+                # set treated them as two hosts, so the gate demanded vhost
+                # fuzzing twice for one machine.
+                self.hostnames.add(name.strip().rstrip(".").lower())
 
     # --------------------------------------------------------------- summary
     def summary(self) -> dict:
@@ -395,7 +411,7 @@ class Check:
 
 
 def _evidence_check(name: str, now_outcome: str | None, prior_outcome: str | None,
-                    when: str) -> Check:
+                    when: str, responded: int | None = None) -> Check:
     """
     A check whose pass depends not on whether a tool ran but on whether it
     produced usable evidence.
@@ -414,8 +430,15 @@ def _evidence_check(name: str, now_outcome: str | None, prior_outcome: str | Non
     gap = {
         "partial": "the scan timed out partway; MISSING IS NOT ABSENT, so this "
                    "is not a finished enumeration",
-        "empty": "the scan ran but found nothing, which on a live service is "
-                 "unusual - check the target is up rather than trusting the blank",
+        "empty": (
+            f"the scan ran but found nothing; a page fetch on this port "
+            f"returned HTTP {responded}, so the service is confirmed up and "
+            f"the empty result is most likely genuine - a stock or single-page "
+            f"site with nothing else to find"
+        ) if responded else (
+            "the scan ran but found nothing, which on a live service is "
+            "unusual - check the target is up rather than trusting the blank"
+        ),
         "blocked": "the scan produced no readable result (blocked, timed out, or "
                    "errored); it did not really run",
     }
@@ -474,6 +497,7 @@ def coverage(surface: AttackSurface) -> list:
             surface.fingerprint_outcome.get(port),
             surface.prior_fingerprint_outcome.get(port),
             surface.prior_timestamp,
+            surface.responded.get(port),
         )
         checks.append(fp or Check(
             fp_name, False,
@@ -485,6 +509,7 @@ def coverage(surface: AttackSurface) -> list:
             surface.enum_outcome.get(port),
             surface.prior_enum_outcome.get(port),
             surface.prior_timestamp,
+            surface.responded.get(port),
         )
         checks.append(en or Check(
             en_name, False,

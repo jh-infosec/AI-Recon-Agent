@@ -326,6 +326,11 @@ def highlights(tool_name: str, parsed: dict) -> list:
         for status in dict.fromkeys(parsed.get("statuses") or []):
             if status != "NOERROR":
                 out.append(f"dns status: {status}")
+        # A query that never reached the server found nothing because it never
+        # asked. On the first live DC run the reverse lookup timed out and
+        # nothing said so.
+        for label in parsed.get("unreachable") or []:
+            out.append(f"!query did not reach the server: {label}")
         for name in parsed.get("hostnames", [])[:10]:
             out.append(f"hostname: {name}")
 

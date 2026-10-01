@@ -1,0 +1,110 @@
+### AXFR zone transfer
+; <<>> DiG 9.20.27-1-Debian <<>> @10.114.148.80 spookysec.local axfr
+; (1 server found)
+;; global options: +cmd
+; Transfer failed.
+
+### NS record
+; <<>> DiG 9.20.27-1-Debian <<>> @10.114.148.80 spookysec.local NS
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; WARNING: .local is reserved for Multicast DNS
+;; You are currently testing what happens when an mDNS query is leaked to DNS
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 23716
+;; flags: qr aa rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 2
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 4000
+;; QUESTION SECTION:
+;spookysec.local.               IN      NS
+
+;; ANSWER SECTION:
+spookysec.local.        3600    IN      NS      attacktivedirectory.spookysec.local.
+
+;; ADDITIONAL SECTION:
+attacktivedirectory.spookysec.local. 3600 IN A  10.114.148.80
+
+;; Query time: 184 msec
+;; SERVER: 10.114.148.80#53(10.114.148.80) (UDP)
+;; WHEN: Thu Oct 01 13:52:52 SAST 2026
+;; MSG SIZE  rcvd: 94
+
+### A record
+; <<>> DiG 9.20.27-1-Debian <<>> @10.114.148.80 spookysec.local A
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; WARNING: .local is reserved for Multicast DNS
+;; You are currently testing what happens when an mDNS query is leaked to DNS
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 62017
+;; flags: qr aa rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 4000
+;; QUESTION SECTION:
+;spookysec.local.               IN      A
+
+;; ANSWER SECTION:
+spookysec.local.        600     IN      A       192.168.100.8
+
+;; Query time: 200 msec
+;; SERVER: 10.114.148.80#53(10.114.148.80) (UDP)
+;; WHEN: Thu Oct 01 13:52:53 SAST 2026
+;; MSG SIZE  rcvd: 60
+
+### MX record
+; <<>> DiG 9.20.27-1-Debian <<>> @10.114.148.80 spookysec.local MX
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; WARNING: .local is reserved for Multicast DNS
+;; You are currently testing what happens when an mDNS query is leaked to DNS
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 40503
+;; flags: qr aa rd ra; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 4000
+;; QUESTION SECTION:
+;spookysec.local.               IN      MX
+
+;; AUTHORITY SECTION:
+spookysec.local.        3600    IN      SOA     attacktivedirectory.spookysec.local. hostmaster.spookysec.local. 68 900 600 86400 3600
+
+;; Query time: 168 msec
+;; SERVER: 10.114.148.80#53(10.114.148.80) (UDP)
+;; WHEN: Thu Oct 01 13:52:53 SAST 2026
+;; MSG SIZE  rcvd: 111
+
+### TXT record
+; <<>> DiG 9.20.27-1-Debian <<>> @10.114.148.80 spookysec.local TXT
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; WARNING: .local is reserved for Multicast DNS
+;; You are currently testing what happens when an mDNS query is leaked to DNS
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 56598
+;; flags: qr aa rd ra; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 4000
+;; QUESTION SECTION:
+;spookysec.local.               IN      TXT
+
+;; AUTHORITY SECTION:
+spookysec.local.        3600    IN      SOA     attacktivedirectory.spookysec.local. hostmaster.spookysec.local. 68 900 600 86400 3600
+
+;; Query time: 180 msec
+;; SERVER: 10.114.148.80#53(10.114.148.80) (UDP)
+;; WHEN: Thu Oct 01 13:52:53 SAST 2026
+;; MSG SIZE  rcvd: 111
+
+### PTR (reverse)
+;; communications error to 10.114.148.80#53: timed out
+;; communications error to 10.114.148.80#53: timed out
+;; communications error to 10.114.148.80#53: timed out
+
+; <<>> DiG 9.20.27-1-Debian <<>> @10.114.148.80 -x 10.114.148.80
+; (1 server found)
+;; global options: +cmd
+;; no servers could be reached

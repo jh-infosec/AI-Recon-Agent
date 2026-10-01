@@ -277,6 +277,32 @@ pass that checks every step left a real, non-empty artifact. The deterministic
 coverage gate is where that check belongs here, and it was half-built: it
 counted attempts, not evidence.
 
+### A combined result is not one result
+
+`run_dns_enum` fires six dig queries and joins their output into one string.
+`parse_dig` then read that string as though it described a single query, and
+decided a zone transfer had succeeded because an SOA record and more than one
+record type were present somewhere in it. On a live domain controller the MX
+and TXT lookups each returned an SOA in their authority section, so a transfer
+that had answered `; Transfer failed.` was reported as a success and became the
+session's headline finding.
+
+Every record in that text was real. What was invented was the attribution: a
+record from one query was used to answer a question about another. Counting the
+SOA twice would not have helped, because there were two, from two different
+queries. The only fix that holds is to scope the question to the output of the
+query that can answer it.
+
+The general rule: when several invocations share a buffer, a claim about one of
+them must be read from that one's own output. If the structure to do that is
+not there, the claim cannot be made. And when two derived flags are
+contradictory, say so rather than letting one win by order of evaluation:
+`axfr_succeeded` and `axfr_refused` were both true, and nothing looked.
+
+This is also the most expensive kind of defect this project has had. A parser
+that drops findings costs you a rerun. A parser that invents one costs you the
+report, because everything downstream reasons from it and sounds right.
+
 ### The model reasons; it does not decide what is true
 
 Tools produce observations. The model orders them, explains them and decides
@@ -779,6 +805,32 @@ absolute path now, and the file set comes from `git ls-files` so it is the
 tracked project, not whatever directory happens to be current. The general
 point: a test that reads files must anchor to the repo by resolved path, never
 by a path relative to the working directory.
+
+Fixed in v0.6.2, all four found by one run against a live Windows domain
+controller.
+
+**A refused zone transfer was reported as succeeded.** See "A combined result
+is not one result" above. The verdict is scoped to the AXFR query's own output,
+a genuine transfer must bracket the zone with the SOA, and the two flags can no
+longer contradict each other. The three tests that covered this had encoded the
+bug: they defined a successful transfer as a single SOA plus other records, a
+shape no real transfer has, hand-written from an assumption exactly as the
+gobuster fixture was.
+
+**A query that never reached the server looked like one that found nothing.**
+The reverse lookup timed out three times on that run and the result was silent
+about it.
+
+**The same hostname in two cases counted as two hosts.** nmap and dig disagreed
+on capitalisation, and the coverage gate raised a vhost obligation for each.
+DNS is case-insensitive, so hostnames are lowercased on the way in.
+
+**The empty-scan advice contradicted evidence the session already had.** It
+told the operator to check the target was up, in a session that had already
+fetched HTTP 200 from that port. `fetch_page` was never ingested into the
+surface, so the gate could not see what the session had proved. Ports that
+answered a fetch are recorded now. The same shape as v0.6.1's parse-warning
+defect: the evidence existed and the thing that needed it never received it.
 
 ## Accepted Designs
 

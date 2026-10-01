@@ -250,9 +250,19 @@ def compact_for_model(tool_name: str, parsed: dict, budget: int = MODEL_PAYLOAD_
             "axfr_succeeded": parsed.get("axfr_succeeded"),
             "axfr_refused": parsed.get("axfr_refused", False),
             "statuses": parsed.get("statuses", []),
+            "unreachable": parsed.get("unreachable", []),
             "hostnames": parsed.get("hostnames", [])[:100],
             "records": parsed.get("records", [])[:100],
         }
+        if parsed.get("axfr_refused"):
+            # Said plainly, because the model previously had to infer the
+            # outcome from a record list that mixed every query together.
+            view["result"] = (
+                "The zone transfer was REFUSED. Any records listed here came "
+                "from ordinary record lookups, not from a transfer, and are "
+                "what any client can ask for. Do not report a zone transfer as "
+                "a finding."
+            )
         # This view is a whitelist, so a key not named here never reaches the
         # model. That is how the format-change warning would have been lost.
         if parsed.get("parse_warning"):
@@ -569,6 +579,15 @@ def parse_whatweb_json(json_text: str) -> dict:
 _DIG_ANSWER = re.compile(
     r"^(?P<name>\S+)\.\s+\d+\s+IN\s+(?P<type>[A-Z]+)\s+(?P<data>.+)$", re.MULTILINE
 )
+# run_dns_enum runs six separate queries and joins their output with these
+# labels. Without splitting on them, every record from every query looks like
+# it came from the same place - which is how a refused zone transfer was
+# reported as a successful one.
+_DIG_SECTION = re.compile(r"^### (.+)$", re.MULTILINE)
+# dig 9.20 prints this and exits 0 when a transfer is refused or fails.
+_AXFR_FAILED = re.compile(r"^; Transfer failed\.|^; Transfer unsuccessful", re.MULTILINE)
+_DIG_UNREACHABLE = re.compile(
+    r"no servers could be reached|communications error to", re.IGNORECASE)
 # ";; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 13872"
 _DIG_STATUS = re.compile(r"->>HEADER<<-.*?\bstatus:\s*([A-Z]+)")
 # ";; flags: qr rd ra; QUERY: 1, ANSWER: 2, AUTHORITY: 0, ADDITIONAL: 1"
@@ -611,6 +630,41 @@ def is_vhost_candidate(name: str) -> bool:
     return bool(_DNS_NAME.match(name))
 
 
+def split_dig_sections(text: str) -> list:
+    """
+    Split run_dns_enum's combined output into (label, body) pairs.
+
+    Returns a single ("", text) pair when there are no `### ` markers, which
+    is what a lone dig invocation looks like.
+    """
+    text = text or ""
+    marks = list(_DIG_SECTION.finditer(text))
+    if not marks:
+        return [("", text)]
+    out = []
+    for i, m in enumerate(marks):
+        end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
+        out.append((m.group(1).strip(), text[m.end():end]))
+    return out
+
+
+def _axfr_body(text: str) -> str:
+    """
+    Just the zone-transfer query's own output.
+
+    This is the whole fix for the defect below: the AXFR verdict must come from
+    the AXFR query and nothing else. Returns "" when a labelled run contains no
+    AXFR section, so "no transfer was attempted" can never read as success.
+    """
+    sections = split_dig_sections(text)
+    if len(sections) == 1 and not sections[0][0]:
+        return sections[0][1]          # a single unlabelled dig run
+    for label, body in sections:
+        if "axfr" in label.lower() or "zone transfer" in label.lower():
+            return body
+    return ""
+
+
 def parse_dig(text: str) -> dict:
     """
     Pull answer records out of dig output, and flag whether a zone transfer
@@ -651,15 +705,38 @@ def parse_dig(text: str) -> dict:
                     out["hostnames"].append(host)
 
     out["statuses"] = _DIG_STATUS.findall(text)
-    # A refused or failed AXFR has no header at all: dig 9.20 prints
-    # "; Transfer failed." and exits 0, so without this line a refusal is
-    # indistinguishable from dig printing nothing.
-    out["axfr_refused"] = "; Transfer failed." in text
 
-    types = {r["type"] for r in out["records"]}
-    # A successful AXFR returns the SOA twice with the zone in between; the
-    # presence of SOA alongside other record types is the practical signal.
-    out["axfr_succeeded"] = "SOA" in types and len(types) > 1
+    # --- zone transfer, judged ONLY on the zone-transfer query ---------------
+    #
+    # This used to be `"SOA" in types and len(types) > 1` over the WHOLE text.
+    # run_dns_enum joins six queries together, and on a live domain controller
+    # the MX and TXT lookups each returned an SOA in their authority section
+    # while the NS lookup returned an NS. That satisfied the test, so a zone
+    # transfer that had plainly answered "; Transfer failed." was reported as
+    # having succeeded, and the session's headline finding was fabricated.
+    #
+    # Counting SOAs twice would not have saved it either: there were two, from
+    # two different queries. Only scoping the question to the AXFR query does.
+    axfr = _axfr_body(text)
+    out["axfr_refused"] = bool(_AXFR_FAILED.search(axfr))
+    # A real transfer opens and closes the zone with the SOA, so the SOA
+    # appears at least twice inside that one query's output.
+    soa_in_axfr = sum(
+        1 for m in _DIG_ANSWER.finditer(axfr) if m.group("type") == "SOA"
+    )
+    out["axfr_succeeded"] = soa_in_axfr >= 2 and not out["axfr_refused"]
+
+    # Belt and braces. These two cannot both be true, and the pair being
+    # contradictory was sitting in the output with nothing to notice it.
+    if out["axfr_succeeded"] and out["axfr_refused"]:        # pragma: no cover
+        out["axfr_succeeded"] = False
+
+    # A query that never reached the server is not a query that found nothing.
+    out["unreachable"] = [
+        label or "dig"
+        for label, body in split_dig_sections(text)
+        if _DIG_UNREACHABLE.search(body)
+    ]
 
     # Format-change check. dig's header states how many answers it received,
     # so if the header says there were answers and none could be read, the

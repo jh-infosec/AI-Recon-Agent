@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.6.2] - 2026-10-01
+
+From the first run against a live Windows domain controller (TryHackMe Attacktive Directory). It produced a confidently false headline finding, which is a worse failure than any defect cleared so far: the gobuster bug lost findings, this one invented one.
+
+Fixed: **A refused zone transfer was reported as a successful one.** The agent printed "zone transfer (AXFR) succeeded" and the session summary built a narrative on it, a textbook DNS misconfiguration leaking an internal address. The raw output said `; Transfer failed.`
+
+`run_dns_enum` fires six queries (AXFR, NS, A, MX, TXT, PTR) and joins their output into one string, which `parse_dig` read as a single result. The success test was "an SOA record exists and there is more than one record type". On that box the MX and TXT lookups each answered with an SOA in their authority section and the NS lookup returned an NS, so the test passed while the transfer itself returned nothing. Requiring the SOA twice would not have helped: there were two, from two different queries.
+
+The verdict is now scoped to the zone-transfer query's own output, a real transfer must bracket the zone with the SOA, `; Transfer failed.` is decisive, and succeeded and refused can no longer both be true. That contradiction was sitting in the result with nothing to notice it. The model is now also told in plain words when a transfer was refused, so it cannot infer otherwise from a record list that mixes every query together.
+
+The three existing tests for this encoded the bug: they defined a successful transfer as one SOA plus other records, a shape no real transfer has. Hand-written again, from an assumption again. They now use the correct shape.
+
+Fixed: **A query that never reached the server was indistinguishable from one that found nothing.** The reverse lookup on that run timed out three times and nothing reported it.
+
+Fixed: **The same hostname in two cases counted as two hosts.** nmap reported `AttacktiveDirectory.spookysec.local`, dig reported `attacktivedirectory.spookysec.local`, and the gate raised a separate vhost obligation for each. DNS is case-insensitive; hostnames are lowercased on the way in.
+
+Fixed: **The empty-scan advice contradicted the session's own evidence.** It told the operator to "check the target is up rather than trusting the blank" in a session that had already fetched HTTP 200 from that exact port. `fetch_page` was never ingested into the surface at all, so the gate could not see the proof it already had. A port that answered a fetch is recorded now, and an empty enumeration against a confirmed-live service says the blank is most likely genuine. It stays a gap either way.
+
+Added: `tests/fixtures/real/dig.multi.txt`, the verbatim six-query output from that run. It is the capture that makes this defect testable. A successful transfer still has not been captured from a live target, so that one case remains inferred.
+
+Tests: 22 new (565 total). Eleven of them were verified against v0.6.1, where they fail.
+
 ## [0.6.1] - 2026-10-01
 
 Evidence-aware coverage. Prompted by a conference talk on building recon agents, whose most repeated lesson was *completion bias*: an agent marks a step done that produced nothing, and the fix is to verify every step left a real artifact. Our coverage gate had the same blind spot. A port counted as fingerprinted or content-enumerated the moment the tool was invoked, no matter what came back, so a scan that was blocked by bot protection, timed out with nothing, or returned zero paths on a live site all read as PASS.

@@ -170,6 +170,7 @@ def test_dns_highlight_calls_out_a_zone_transfer():
     parsed = parsers.parse_dig(
         "x.htb.\t60\tIN\tSOA\tns1.x.htb. root.x.htb. 1 60\n"
         "dev.x.htb.\t60\tIN\tA\t10.0.0.1\n"
+        "x.htb.\t60\tIN\tSOA\tns1.x.htb. root.x.htb. 1 60\n"
     )
     assert any("AXFR" in x for x in console.highlights("run_dns_enum", parsed))
 

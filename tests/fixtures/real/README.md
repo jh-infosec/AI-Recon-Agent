@@ -28,7 +28,7 @@ the tool cannot share the parser's mistakes.
 | whatweb  | 0.6.4                | `whatweb.json`, `whatweb.redirect.json` |
 | gobuster | 3.8.2                | `gobuster.txt` |
 | nmap     | 7.99                 | `nmap.xml`, `nmap.empty.xml` |
-| dig      | 9.20.27-1-Debian     | `dig.a.txt`, `dig.any.txt`, `dig.axfr.txt`, `dig.nxdomain.txt`, `dig.ptr.txt` |
+| dig      | 9.20.27-1-Debian     | `dig.a.txt`, `dig.any.txt`, `dig.axfr.txt`, `dig.nxdomain.txt`, `dig.ptr.txt`, `dig.multi.txt` |
 
 Platform: Kali GNU/Linux Rolling 2026.3, kernel 7.1.5. Captured 2026-09-29
 (`dig.ptr.txt` and `whatweb.redirect.json` in a second run the same day).
@@ -62,10 +62,21 @@ results up by name, never by position.
 - `dig.ptr.txt`: a reverse lookup, as `run_dns_enum` runs against every
   target. The record name is under `in-addr.arpa` and must not become a
   hostname; the answer data is the real name.
+- `dig.multi.txt`: the full six-query output of one `run_dns_enum` call against
+  a live Windows domain controller, captured 2026-10-01. This is the shape the
+  parser actually receives in a session, and the single most important fixture
+  in the folder: reading it as one result is what made a refused zone transfer
+  report as a successful one. It contains a refused AXFR, an NS answer, an A
+  record exposing an internal address, SOA records in the authority section of
+  BOTH the MX and TXT lookups, and a reverse lookup that never reached the
+  server.
 
 ## Not yet captured
 
-- A successful AXFR. Needs a DNS server that allows transfers; a lab box with
-  port 53 open is the realistic source. Until then `axfr_succeeded` rests on
-  the SOA-plus-other-records heuristic, and the MX and SOA hostname tests in
-  `test_regressions_v0511.py` are marked INFERRED.
+- A successful AXFR. Still not captured: the one live domain controller we have
+  run against refused the transfer. `axfr_succeeded` now requires the SOA to
+  bracket the zone inside the AXFR query's own output, which is the documented
+  shape of a real transfer, but the positive case is tested against a
+  constructed sample marked INFERRED in `test_v062.py`. The MX and SOA hostname
+  tests in `test_regressions_v0511.py` are marked INFERRED for the same reason.
+  A box that allows transfers would settle all three.

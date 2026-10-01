@@ -113,10 +113,14 @@ def test_gobuster_text_parses():
 
 
 def test_dig_parser_detects_zone_transfer():
+    # A real transfer opens AND closes the zone with the SOA. These
+    # fixtures used to carry it once, which is the assumption that let a
+    # stray SOA from a different query read as a successful transfer.
     axfr = (
         "testbox.htb.\t604800\tIN\tSOA\tns1.testbox.htb. root.testbox.htb. 2 604800\n"
         "testbox.htb.\t604800\tIN\tNS\tns1.testbox.htb.\n"
         "dev.testbox.htb.\t604800\tIN\tA\t10.10.11.42\n"
+        "testbox.htb.\t604800\tIN\tSOA\tns1.testbox.htb. root.testbox.htb. 2 604800\n"
     )
     r = parsers.parse_dig(axfr)
     assert r["axfr_succeeded"] is True
@@ -469,6 +473,7 @@ def test_dns_render_calls_out_a_zone_transfer():
     axfr = parsers.parse_dig(
         "testbox.htb.\t604800\tIN\tSOA\tns1.testbox.htb. root.testbox.htb. 2 604800\n"
         "dev.testbox.htb.\t604800\tIN\tA\t10.10.11.42\n"
+        "testbox.htb.\t604800\tIN\tSOA\tns1.testbox.htb. root.testbox.htb. 2 604800\n"
     )
     assert "AXFR" in parsers.render_markdown("run_dns_enum", axfr)
     assert "AXFR" in parsers.render_html("run_dns_enum", axfr)
