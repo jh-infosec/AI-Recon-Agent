@@ -211,6 +211,12 @@ class AttackSurface:
     web_ports: dict = field(default_factory=dict)     # port -> is_https
     hostnames: set = field(default_factory=set)
     dns_open: bool = False
+    smb_open: bool = False
+    ldap_open: bool = False
+    # "ok" | "restricted" | "denied" | None. "restricted" is the domain
+    # controller that accepted the null session and then showed nothing.
+    smb_outcome: str = ""
+    ldap_outcome: str = ""
     # HTTP-speaking ports deliberately NOT treated as web services, with why.
     non_content_http: dict = field(default_factory=dict)
     scanned: bool = False                             # has nmap run at all
@@ -245,6 +251,8 @@ class AttackSurface:
     prior_enumerated: set = field(default_factory=set)
     prior_vhost_fuzzed: set = field(default_factory=set)
     prior_dns_enumerated: bool = False
+    prior_smb_outcome: str = ""
+    prior_ldap_outcome: str = ""
     prior_enum_outcome: dict = field(default_factory=dict)
     prior_fingerprint_outcome: dict = field(default_factory=dict)
     prior_timestamp: str = ""
@@ -288,6 +296,10 @@ class AttackSurface:
                         self.non_content_http[port] = why
                     if svc == "domain" or port == 53:
                         self.dns_open = True
+                    if port in (139, 445) or "microsoft-ds" in svc or "netbios-ssn" in svc:
+                        self.smb_open = True
+                    if port in (389, 636, 3268, 3269) or svc.startswith("ldap"):
+                        self.ldap_open = True
             self._add_hostnames(parsed)
 
         elif tool_name == "run_whatweb":
@@ -314,6 +326,28 @@ class AttackSurface:
 
         elif tool_name == "run_dns_enum":
             self.dns_enumerated = True
+            self._add_hostnames(parsed)
+
+        elif tool_name == "run_smb_enum":
+            # Three distinct outcomes, and the middle one is the whole reason
+            # this is not a boolean: a server that let us in and listed nothing
+            # has refused, it has not reported an absence of shares.
+            if parsed.get("shares") or parsed.get("users") or parsed.get("groups"):
+                self.smb_outcome = "ok"
+            elif parsed.get("listing_restricted") or parsed.get("denied"):
+                self.smb_outcome = "restricted"
+            else:
+                self.smb_outcome = "denied"
+
+        elif tool_name == "run_ldap_enum":
+            if parsed.get("entries"):
+                self.ldap_outcome = "ok"
+            elif parsed.get("root_dse"):
+                # The rootDSE answered and the searches did not: partial, and
+                # the useful half (the DC name) is already recorded.
+                self.ldap_outcome = "restricted"
+            else:
+                self.ldap_outcome = "denied"
             self._add_hostnames(parsed)
 
         elif tool_name == "fetch_page":
@@ -356,6 +390,8 @@ class AttackSurface:
             if isinstance(d, str) and is_vhost_candidate(d)
         }
         self.prior_dns_enumerated = bool(actions.get("dns_enumerated"))
+        self.prior_smb_outcome = str(actions.get("smb_outcome") or "")
+        self.prior_ldap_outcome = str(actions.get("ldap_outcome") or "")
         for port, outcome in (actions.get("enum_outcome") or {}).items():
             self.prior_enum_outcome[int(port)] = outcome
         for port, outcome in (actions.get("fingerprint_outcome") or {}).items():
@@ -419,6 +455,10 @@ class AttackSurface:
                 str(port): dict(sorted(found.items()))
                 for port, found in sorted(self.paths.items())
             },
+            "smb_open": self.smb_open,
+            "ldap_open": self.ldap_open,
+            "smb_outcome": self.smb_outcome,
+            "ldap_outcome": self.ldap_outcome,
             "enum_outcome": {str(k): v for k, v in sorted(self.enum_outcome.items())},
             "fingerprint_outcome": {
                 str(k): v for k, v in sorted(self.fingerprint_outcome.items())
@@ -585,7 +625,58 @@ def coverage(surface: AttackSurface) -> list:
             surface.prior_timestamp,
         ))
 
-    for host in sorted(surface.hostnames):
+    # A Windows host with SMB or LDAP exposed and no attempt made against
+    # either is a real gap: on a domain controller that is where the surface
+    # actually is, and the web port is usually a decoy.
+    for open_, outcome, prior, name, missing in (
+        (surface.smb_open, surface.smb_outcome, surface.prior_smb_outcome,
+         "SMB enumerated anonymously",
+         "SMB is exposed but no anonymous share or domain enumeration was attempted"),
+        (surface.ldap_open, surface.ldap_outcome, surface.prior_ldap_outcome,
+         "LDAP enumerated anonymously",
+         "LDAP is exposed but no anonymous bind was attempted"),
+    ):
+        if not open_:
+            continue
+        effective = outcome or prior
+        from_prior = not outcome and bool(prior)
+        stamp = f" ({surface.prior_timestamp})" if from_prior and surface.prior_timestamp else ""
+        if effective == "ok":
+            checks.append(Check(name, True,
+                                "anonymous enumeration returned data"
+                                + (f" in a previous session{stamp}" if from_prior else ""),
+                                from_prior=from_prior, state="prior" if from_prior else "pass"))
+        elif effective == "restricted":
+            # Satisfied: the question was asked and the target answered it.
+            # A hardened host is a finding, not an outstanding task.
+            checks.append(Check(name, True,
+                                "the target refused anonymous enumeration, which is "
+                                "correct configuration and a result in itself"
+                                + (f", recorded in a previous session{stamp}" if from_prior else ""),
+                                from_prior=from_prior, state="prior" if from_prior else "pass"))
+        elif effective == "denied":
+            checks.append(Check(name, False,
+                                "the enumeration did not produce a readable result",
+                                state="blocked"))
+        else:
+            checks.append(Check(name, False, missing, state="miss"))
+
+    # Vhost fuzzing sends a Host header to a WEB server. With no content web
+    # port there is nothing to send it to, so raising the obligation would be
+    # a check no session could satisfy - the shape v0.5.11 cleared when an IP
+    # address became a hostname. This became reachable in v0.7.0: the LDAP
+    # rootDSE yields hostnames on domain controllers that serve no web at all.
+    hostnames_to_check = sorted(surface.hostnames) if surface.web_ports else []
+    if surface.hostnames and not surface.web_ports:
+        checks.append(Check(
+            f"Hostnames found ({len(surface.hostnames)}) correctly not vhost-fuzzed",
+            True,
+            "no web service is exposed, so there is nothing to send a Host "
+            "header to; add them to /etc/hosts if a web port appears later",
+            state="pass",
+        ))
+
+    for host in hostnames_to_check:
         if is_infrastructure_hostname(host):
             checks.append(
                 Check(

@@ -1,0 +1,12 @@
+### COMMAND: ldapsearch -x -LLL -H ldap://10.114.148.80 -s base -b  namingContexts defaultNamingContext dnsHostName
+### ---
+dn:
+dnsHostName: AttacktiveDirectory.spookysec.local
+defaultNamingContext: DC=spookysec,DC=local
+namingContexts: DC=spookysec,DC=local
+namingContexts: CN=Configuration,DC=spookysec,DC=local
+namingContexts: CN=Schema,CN=Configuration,DC=spookysec,DC=local
+namingContexts: DC=DomainDnsZones,DC=spookysec,DC=local
+namingContexts: DC=ForestDnsZones,DC=spookysec,DC=local
+
+### EXIT: 0

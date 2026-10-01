@@ -1,0 +1,4 @@
+### COMMAND: rpcclient -U  -N 10.114.148.80 -c netshareenumall
+### ---
+do_cmd: Could not initialise srvsvc. Error was NT_STATUS_ACCESS_DENIED
+### EXIT: 1

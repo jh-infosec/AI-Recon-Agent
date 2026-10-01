@@ -520,8 +520,19 @@ def test_winrm_is_not_treated_as_a_web_service():
 
 
 def test_windows_box_with_no_web_server_passes_the_gate():
-    """The exact session that wrongly exited 3."""
+    """
+    The exact session that wrongly exited 3.
+
+    Amended in v0.7.0: SMB enumeration exists now, so a Windows box with 445
+    open and no null session attempted is a genuine gap rather than nothing
+    left to do. The original point of this test was that the box must not be
+    marked down for having no WEB server, and that still holds - the only
+    outstanding item is the SMB one, and doing it completes the gate.
+    """
     s = _surface_from(BLUE_BOX_XML)
+    assert coverage_summary(coverage(s))["missed"] == ["SMB enumerated anonymously"]
+
+    s.ingest("run_smb_enum", {}, {"shares": [{"name": "IPC$", "type": "IPC", "comment": ""}]})
     sm = coverage_summary(coverage(s))
     assert sm["complete"], f"still flagged: {sm['missed']}"
 

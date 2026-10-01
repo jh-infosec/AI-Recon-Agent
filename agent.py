@@ -221,6 +221,45 @@ TOOLS = [
         },
     },
     {
+        "name": "run_smb_enum",
+        "description": (
+            "Anonymous SMB and RPC enumeration against a Windows host with 139 or "
+            "445 open: lists shares over a null session, then queries domain info, "
+            "users, groups and shares via rpcclient. READ-ONLY and ANONYMOUS - it "
+            "takes no username or password and cannot be given one, downloads "
+            "nothing, and writes nothing. A host that refuses the null session is "
+            "correctly configured; that refusal is reported as a refusal, not as "
+            "an empty result."
+        ),
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "run_ldap_enum",
+        "description": (
+            "Anonymous LDAP enumeration against a host with 389 or 3268 open. "
+            "Reads the rootDSE, which names the domain controller and its naming "
+            "contexts without any credential, and then attempts bounded user and "
+            "computer searches if `base_dn` is supplied. READ-ONLY and ANONYMOUS - "
+            "no bind DN, no password, and no way to pass one. Modern AD usually "
+            "answers the rootDSE and refuses anonymous searches; that refusal is "
+            "reported, because zero entries from a refused search is not zero "
+            "users in the directory."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "base_dn": {
+                    "type": "string",
+                    "description": (
+                        "Search base, normally the defaultNamingContext from a "
+                        "previous rootDSE read, e.g. 'DC=example,DC=local'. Omit "
+                        "on the first call to read the rootDSE and learn it."
+                    ),
+                }
+            },
+        },
+    },
+    {
         "name": "fetch_page",
         "description": (
             "Fetch one page and read it: status, headers, title, HTML comments, "
@@ -344,6 +383,10 @@ def dispatch_tool(name: str, tool_input: dict, target: str) -> dict:
         )
     if name == "run_dns_enum":
         return recon.run_dns_enum(target, domain=tool_input.get("domain", ""))
+    if name == "run_smb_enum":
+        return recon.run_smb_enum(target)
+    if name == "run_ldap_enum":
+        return recon.run_ldap_enum(target, base_dn=tool_input.get("base_dn", ""))
     if name == "searchsploit_lookup":
         return recon.searchsploit_lookup(tool_input.get("query", ""))
     raise ValueError(f"Unknown tool: {name}")

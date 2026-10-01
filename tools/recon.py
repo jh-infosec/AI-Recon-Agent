@@ -41,6 +41,7 @@ from safety import (
     resolve_wordlist,
     validate_extensions,
     validate_host_format,
+    validate_ldap_base_dn,
     validate_ports,
     validate_search_term,
     validate_url_path,
@@ -567,4 +568,142 @@ def fetch_page(target: str, port: int = 80, https: bool = False, path: str = "/"
         "stderr": "",
         "timed_out": False,
         "parsed": parsed,
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Active Directory enumeration: anonymous, read-only, no credentials
+#
+# These wrappers take NO username or password parameter, and that absence is
+# deliberate in the same way the absence of an exploit tool is. A credential
+# field would turn a recon wrapper into a spraying primitive the first time a
+# model decided to try "administrator" with a guessed password, and nothing in
+# a prompt reliably prevents that. What cannot be passed cannot be abused.
+#
+# Everything here reads. Nothing writes to the target, downloads from a share,
+# supplies a credential, or requests a Kerberos ticket. User enumeration via
+# Kerberos pre-authentication and AS-REP roasting are deliberately absent too:
+# they are the attack on this class of box, and the attack is the operator's
+# to run by hand. The agent maps the surface and names the technique.
+# --------------------------------------------------------------------------- #
+SMB_TIMEOUT = 60
+LDAP_SIZE_LIMIT = "25"
+
+
+def run_smb_enum(target: str) -> dict:
+    """
+    Anonymous SMB and RPC enumeration: share list, then null-session domain
+    queries. Read-only, no credentials.
+
+    A refusal here is a result, not a failure. A domain controller that denies
+    a null session is correctly configured, and saying so is worth more than
+    an empty list that reads as "nothing there".
+    """
+    assert_authorized(target)
+    smb = _require_binary("smbclient", "smbclient")
+    sections, stdout_parts, stderr_parts = [], [], []
+    rc_final = 0
+
+    def _do(label, cmd, timeout=SMB_TIMEOUT):
+        nonlocal rc_final
+        r = _run(cmd, timeout=timeout)
+        sections.append(r["command"])
+        # Labelled so the parser can judge each command on its own output. The
+        # zone-transfer defect came from reading several commands as one.
+        body = (r.get("stdout") or "").strip()
+        err = (r.get("stderr") or "").strip()
+        stdout_parts.append(f"### {label}\n{body}\n{err}".rstrip())
+        if err:
+            stderr_parts.append(f"[{label}] {err}")
+        if r.get("returncode"):
+            rc_final = r["returncode"]
+
+    # -N is "no password". There is no option here to supply one.
+    _do("share list", [smb, "-L", f"//{target}", "-N"])
+
+    rpc = shutil.which("rpcclient")
+    if rpc:
+        for label, command in (
+            ("domain info", "querydominfo"),
+            ("domain users", "enumdomusers"),
+            ("domain groups", "enumdomgroups"),
+            ("share enum", "netshareenumall"),
+        ):
+            _do(label, [rpc, "-U", "", "-N", target, "-c", command])
+    else:
+        stdout_parts.append(
+            "### rpcclient missing\nrpcclient is not installed, so the "
+            "null-session domain queries did not run. Install the samba-common-bin "
+            "package. This is a missing tool, not a result about the target."
+        )
+
+    body = "\n\n".join(stdout_parts)
+    return {
+        "command": " ; ".join(sections) if sections else "smbclient (smb enum)",
+        "returncode": rc_final,
+        "stdout": body[-MAX_OUTPUT_CHARS:],
+        "stderr": "\n".join(stderr_parts)[-4000:],
+        "timed_out": False,
+        "parsed": parsers.parse_smb_enum(body),
+    }
+
+
+def run_ldap_enum(target: str, base_dn: str = "") -> dict:
+    """
+    Anonymous LDAP enumeration: the rootDSE first, then a bounded search for
+    users and computers if a base DN is known. Read-only, no credentials.
+
+    Modern AD answers the rootDSE anonymously and refuses anonymous searches,
+    so the usual outcome is the first succeeding and the second being turned
+    away. The rootDSE alone names the domain controller and the naming
+    contexts without any credential, which is worth having.
+    """
+    assert_authorized(target)
+    binary = _require_binary("ldapsearch", "ldap-utils")
+    base_dn = (base_dn or "").strip()
+    if base_dn:
+        validate_ldap_base_dn(base_dn)
+
+    sections, stdout_parts, stderr_parts = [], [], []
+    rc_final = 0
+
+    def _do(label, cmd, timeout=SMB_TIMEOUT):
+        nonlocal rc_final
+        r = _run(cmd, timeout=timeout)
+        sections.append(r["command"])
+        body = (r.get("stdout") or "").strip()
+        err = (r.get("stderr") or "").strip()
+        stdout_parts.append(f"### {label}\n{body}\n{err}".rstrip())
+        if err:
+            stderr_parts.append(f"[{label}] {err}")
+        if r.get("returncode"):
+            rc_final = r["returncode"]
+
+    url = f"ldap://{target}"
+    # -x is a SIMPLE bind with no credentials, which with no -D and no -w is an
+    # anonymous bind. There is no option here to supply a DN or a password.
+    _do("rootDSE", [binary, "-x", "-LLL", "-H", url, "-s", "base", "-b", "",
+                    "namingContexts", "defaultNamingContext", "dnsHostName"])
+    if base_dn:
+        _do("users", [binary, "-x", "-LLL", "-H", url, "-b", base_dn,
+                      "-z", LDAP_SIZE_LIMIT, "(objectClass=user)",
+                      "sAMAccountName", "description"])
+        _do("computers", [binary, "-x", "-LLL", "-H", url, "-b", base_dn,
+                          "-z", LDAP_SIZE_LIMIT, "(objectClass=computer)",
+                          "name", "dNSHostName", "operatingSystem"])
+    else:
+        stdout_parts.append(
+            "### no base DN\nOnly the rootDSE was read, because no base_dn was "
+            "given. The rootDSE above reports defaultNamingContext; pass that "
+            "as base_dn to attempt the user and computer searches."
+        )
+
+    body = "\n\n".join(stdout_parts)
+    return {
+        "command": " ; ".join(sections) if sections else "ldapsearch (ldap enum)",
+        "returncode": rc_final,
+        "stdout": body[-MAX_OUTPUT_CHARS:],
+        "stderr": "\n".join(stderr_parts)[-4000:],
+        "timed_out": False,
+        "parsed": parsers.parse_ldap_enum(body),
     }

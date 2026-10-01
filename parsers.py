@@ -1021,3 +1021,202 @@ def parse_html(html: str) -> dict:
     out["scripts"] = out["scripts"][:30]
     out["forms"] = out["forms"][:15]
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Active Directory enumeration, anonymous and read-only
+#
+# Every parser below is written from captured output in tests/fixtures/real/ad,
+# and the capture that shaped them most is `smb.shares.txt`. On a live domain
+# controller `smbclient -L` printed "Anonymous login successful", exited 0, and
+# returned a share table with a header, a separator and no rows at all. Read
+# naively that says "the null session worked and the server has no shares".
+# Both halves are false: a domain controller always has IPC$, NETLOGON and
+# SYSVOL, so an empty table means the listing was refused. rpcclient confirmed
+# it independently with NT_STATUS_ACCESS_DENIED.
+#
+# That is the same defect as the zone transfer reported as succeeding, dressed
+# better: here the success signal is explicit and the exit code is 0. So these
+# parsers never infer "nothing is there" from an empty list. They report what
+# the server allowed, and where it refused, they say refused.
+# --------------------------------------------------------------------------- #
+
+# These wrappers join several commands, each under a "### label" header, the
+# same shape run_dns_enum produces. Each sub-command's verdict is read from its
+# own section: judging the whole buffer at once is precisely what made a
+# refused AXFR report as a success.
+_SMB_DENIED = re.compile(
+    r"NT_STATUS_ACCESS_DENIED|NT_STATUS_LOGON_FAILURE|"
+    r"NT_STATUS_ACCOUNT_DISABLED|NT_STATUS_INVALID_PARAMETER",
+    re.IGNORECASE,
+)
+_SMB_UNREACHABLE = re.compile(
+    r"NT_STATUS_(?:CONNECTION_REFUSED|HOST_UNREACHABLE|IO_TIMEOUT|"
+    r"BAD_NETWORK_NAME|NETWORK_UNREACHABLE)|Connection to \S+ failed",
+    re.IGNORECASE,
+)
+_SMB_ANON_OK = re.compile(r"Anonymous login successful", re.IGNORECASE)
+# "	ADMIN$          Disk      Remote Admin"
+_SMB_SHARE_ROW = re.compile(
+    r"^\s+(?P<name>\S+)\s+(?P<type>Disk|IPC|Printer)\s*(?P<comment>.*)$", re.MULTILINE
+)
+_SMB_SHARE_HEADER = re.compile(r"^\s+Sharename\s+Type\s+Comment", re.MULTILINE)
+# "user:[svc-admin] rid:[0x44f]"
+_RPC_ENTRY = re.compile(r"^(?P<kind>user|group):\[(?P<name>[^\]]*)\]\s*rid:\[(?P<rid>[^\]]*)\]",
+                        re.MULTILINE)
+# LDAP refuses an anonymous search on modern AD with this exact wording.
+# AD creates its own application partitions. Their naming contexts look like
+# domains but nothing is served under them, so turning them into hostnames
+# would raise a vhost-fuzzing obligation no session could ever satisfy - the
+# defect v0.5.11 cleared when an IP address became a hostname.
+_AD_PARTITIONS = {"domaindnszones", "forestdnszones"}
+_LDAP_BIND_REQUIRED = re.compile(
+    r"successful bind must be completed|LdapErr:.*DSID|Operations error", re.IGNORECASE)
+# [ \t] and NOT \s: \s matches a newline, so "dn:" with an empty value
+# consumed the line break and claimed the NEXT line's text as its own value.
+# The rootDSE capture starts with a bare "dn:", so this swallowed the
+# dnsHostName on the line below it and reported no hostname at all.
+_LDAP_ATTR = re.compile(r"^(?P<attr>[A-Za-z][A-Za-z0-9;-]*):[ \t]?(?P<value>.*)$", re.MULTILINE)
+
+
+# The capture script brackets each command with "### COMMAND:", "### ---" and
+# "### EXIT:". Those share the "### " prefix with the real section labels the
+# wrappers write, so they have to be removed BEFORE splitting or "### ---"
+# becomes a section called "---" and the genuine label gets an empty body.
+_CAPTURE_WRAPPER = re.compile(r"^### (?:COMMAND:|EXIT:|---).*$", re.MULTILINE)
+
+
+def _section_bodies(text: str) -> list:
+    """Split a multi-command capture into (label, body) pairs, as split_dig_sections does."""
+    return split_dig_sections(_CAPTURE_WRAPPER.sub("", text or ""))
+
+
+def _strip_wrapper(body: str) -> str:
+    """Belt and braces for any wrapper line that survived the pre-split strip."""
+    return "\n".join(
+        ln for ln in (body or "").splitlines()
+        if not ln.startswith("### ")
+    )
+
+
+def parse_smb_enum(text: str) -> dict:
+    """
+    Parse the combined output of the anonymous SMB wrapper.
+
+        {"anonymous_login": bool,
+         "shares": [{"name", "type", "comment"}],
+         "users": [...], "groups": [...],
+         "denied": [labels], "unreachable": [labels],
+         "listing_restricted": bool}
+
+    `listing_restricted` is the one that matters: the server let us in and then
+    showed us nothing. See the note at the top of this section.
+    """
+    text = text or ""
+    out = {"anonymous_login": False, "shares": [], "users": [], "groups": [],
+           "denied": [], "unreachable": [], "listing_restricted": False}
+    if not text.strip():
+        return {**out, "parse_error": "empty smb output"}
+
+    saw_share_table = False
+    for label, raw in _section_bodies(text):
+        body = _strip_wrapper(raw)
+        label = label or "smb"
+        if _SMB_ANON_OK.search(body):
+            out["anonymous_login"] = True
+        if _SMB_DENIED.search(body):
+            out["denied"].append(label)
+        # A connection error can appear and the command still succeed: the
+        # first capture failed a NetBIOS name lookup, then connected by IP and
+        # logged in anyway. So unreachable is only recorded when nothing else
+        # in that section worked.
+        if _SMB_UNREACHABLE.search(body) and not _SMB_ANON_OK.search(body):
+            out["unreachable"].append(label)
+
+        if _SMB_SHARE_HEADER.search(body):
+            saw_share_table = True
+            for m in _SMB_SHARE_ROW.finditer(body):
+                name = m.group("name")
+                if name.lower() in ("sharename", "---------"):
+                    continue
+                out["shares"].append({
+                    "name": name,
+                    "type": m.group("type"),
+                    "comment": m.group("comment").strip(),
+                })
+        for m in _RPC_ENTRY.finditer(body):
+            entry = {"name": m.group("name"), "rid": m.group("rid")}
+            (out["users"] if m.group("kind") == "user" else out["groups"]).append(entry)
+
+    # The trap. A share table that printed its header and no rows, from a
+    # server that accepted the login, is a refusal wearing a success. Every
+    # Windows host has at least IPC$, and a domain controller also has
+    # NETLOGON and SYSVOL, so "no shares" is not a result this can produce.
+    if saw_share_table and not out["shares"]:
+        out["listing_restricted"] = True
+
+    out["share_count"] = len(out["shares"])
+    out["user_count"] = len(out["users"])
+    return out
+
+
+def parse_ldap_enum(text: str) -> dict:
+    """
+    Parse the combined output of the anonymous LDAP wrapper.
+
+        {"root_dse": {attr: [values]},
+         "naming_contexts": [...], "dns_host_name": str,
+         "entries": [{attr: [values]}],
+         "bind_required": [labels], "hostnames": [...]}
+
+    Modern AD allows an anonymous read of the rootDSE and refuses anonymous
+    searches, so a session commonly gets the first and is turned away from the
+    second. `bind_required` records that refusal by name, because zero entries
+    from a refused search is not zero users in the directory.
+    """
+    text = text or ""
+    out = {"root_dse": {}, "naming_contexts": [], "dns_host_name": "",
+           "entries": [], "bind_required": [], "hostnames": []}
+    if not text.strip():
+        return {**out, "parse_error": "empty ldap output"}
+
+    for label, raw in _section_bodies(text):
+        body = _strip_wrapper(raw)
+        label = label or "ldap"
+        if _LDAP_BIND_REQUIRED.search(body):
+            out["bind_required"].append(label)
+            continue
+        attrs = {}
+        for m in _LDAP_ATTR.finditer(body):
+            attr, value = m.group("attr"), m.group("value").strip()
+            if not value:
+                continue
+            attrs.setdefault(attr, []).append(value)
+        if not attrs:
+            continue
+        if "namingContexts" in attrs or "defaultNamingContext" in attrs:
+            for key, values in attrs.items():
+                out["root_dse"].setdefault(key, []).extend(values)
+        else:
+            out["entries"].append(attrs)
+
+    out["naming_contexts"] = list(dict.fromkeys(out["root_dse"].get("namingContexts", [])))
+    host = (out["root_dse"].get("dnsHostName") or [""])[0]
+    out["dns_host_name"] = host
+    # The rootDSE names the domain controller without any credential at all,
+    # which is the one genuinely useful thing an anonymous bind still gives up.
+    if host and is_vhost_candidate(host):
+        out["hostnames"].append(host.rstrip(".").lower())
+    for ctx in out["naming_contexts"]:
+        parts = [p.strip()[3:] for p in ctx.split(",") if p.strip().lower().startswith("dc=")]
+        # Drop the application-partition prefix rather than the whole context:
+        # DC=DomainDnsZones,DC=spookysec,DC=local still tells us the domain is
+        # spookysec.local, which is worth keeping.
+        while parts and parts[0].lower() in _AD_PARTITIONS:
+            parts = parts[1:]
+        if parts:
+            name = ".".join(parts).lower()
+            if is_vhost_candidate(name) and name not in out["hostnames"]:
+                out["hostnames"].append(name)
+    out["entry_count"] = len(out["entries"])
+    return out

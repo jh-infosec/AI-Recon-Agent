@@ -106,14 +106,23 @@ runs, which moves to v0.6.0.
 - Per-port outcomes are carried across sessions, so a prior failure does not
   launder into a pass.
 
-## v0.6.2 - playbooks
+## v0.6.4 - playbooks
 
 - Phase definitions as markdown under `playbooks/`, loaded on demand.
 - Knowledge injection scoped by `lookup()` against current findings rather
   than the whole table every turn.
 - The system prompt shrinks to the parts that are actually invariant.
 
-## v0.7.0 - smarter recon
+## v0.7.0 - anonymous AD enumeration (shipped)
+
+- `run_smb_enum`: null-session share listing and rpcclient domain queries.
+- `run_ldap_enum`: anonymous rootDSE read, plus bounded user and computer
+  searches when a base DN is known.
+- Neither takes a credential parameter, by construction.
+- Coverage checks for SMB and LDAP; a refusal satisfies them, because a
+  hardened target has answered the question.
+
+## v0.7.1 - smarter recon
 
 - Target-aware wordlist generation from fingerprint output, subject to the
   v0.3.1 path rules for anything written to disk.

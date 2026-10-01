@@ -328,6 +328,24 @@ answered. A 404 proves something was there to say no; it says nothing about
 whether the site has content. Only a 2xx supports the claim "there is nothing
 more here to find".
 
+### A capability that cannot be given a credential cannot spray
+
+`run_smb_enum` and `run_ldap_enum` take no username and no password, and there
+is no code path that would accept one. That is deliberate in the same way the
+absence of an exploit tool is deliberate.
+
+A credential parameter is not dangerous because a model is malicious. It is
+dangerous because "try administrator with a blank password" is a reasonable
+next step for a model reasoning about a domain controller, and a wrapper that
+accepts credentials will carry it out. Prompt instructions do not reliably
+prevent that; a missing parameter does. The constraint lives in the signature,
+where it cannot be reasoned around, and a test asserts no credential-shaped
+argument exists on either function or in either tool schema.
+
+The same reasoning keeps Kerberos user enumeration and AS-REP roasting out.
+Those produce a crackable hash, which is the attack on this class of box, and
+the attack is where the studying happens.
+
 ### The model reasons; it does not decide what is true
 
 Tools produce observations. The model orders them, explains them and decides
@@ -490,6 +508,25 @@ code, and the best outcome a port saw in a session wins. Outcomes are stored in
 the snapshot and carried forward, so a prior clean result satisfies a check
 while a prior gap does not. A pre-v0.6.1 snapshot has no outcomes, so a prior
 enumeration from one is re-verified rather than trusted.
+
+### Anonymous AD enumeration
+
+`run_smb_enum` and `run_ldap_enum` enumerate a Windows domain without
+credentials. Both join several commands under `### label` headers and parse
+each command's verdict from its own section, because reading a combined buffer
+as one result is what made a refused zone transfer report as a success.
+
+The parsers never infer "nothing is there" from an empty list. The capture
+that shaped them is `tests/fixtures/real/ad/smb.shares.txt`: a live DC printed
+"Anonymous login successful", exited 0, and returned a share table with no
+rows. Every Windows host has IPC$ and a DC also has NETLOGON and SYSVOL, so an
+empty table is a refusal, reported as `listing_restricted`. The same applies to
+LDAP, where an anonymous search is refused with a bind error and zero entries
+does not mean zero users.
+
+A refusal satisfies the coverage check. The question was asked, the target
+answered, and correct configuration is a finding; leaving it outstanding would
+mean a hardened domain controller could never complete the gate.
 
 ### telemetry.py
 

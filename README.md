@@ -1,6 +1,6 @@
 # ai-recon-agent
 
-**v0.6.3**
+**v0.7.0**
 
 ai-recon-agent is a small security study kit with two halves: a **red-team
 recon agent** for practicing enumeration on machines you're authorized to
@@ -140,7 +140,7 @@ hunt.py                   - BLUE TEAM: threat-hunting loop over logs
 safety.py                 - recon-side allowlist gate
 knowledge.py              - recon finding -> MITRE ATT&CK -> HTB Academy lookup
 detections.py             - hunt log-signal -> MITRE ATT&CK lookup
-tools/recon.py            - nmap / whatweb / gobuster / ffuf / dns / searchsploit
+tools/recon.py            - nmap / whatweb / gobuster / ffuf / dns / smb / ldap / searchsploit
 tools/loganalysis.py      - read-only, path-locked log tools
 report.py                 - SessionReport (recon) + HuntReport (blue) -> MD + HTML
 config/targets.example.yaml - template; copy to targets.yaml (gitignored)
@@ -163,7 +163,7 @@ architecture.md           - design principles, constraints, cleared defects
 ```bash
 pip install -r requirements-dev.txt
 ruff check .      # lint
-python -m pytest -q  # run the full suite (589 tests)
+python -m pytest -q  # run the full suite (631 tests)
 pip-audit -r requirements.txt   # supply-chain audit
 ```
 

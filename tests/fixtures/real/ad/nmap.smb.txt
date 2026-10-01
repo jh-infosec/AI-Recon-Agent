@@ -1,0 +1,17 @@
+### COMMAND: nmap -Pn -p139,445 --script smb-os-discovery,smb-enum-shares,smb2-security-mode 10.114.148.80
+### ---
+Starting Nmap 7.99 ( https://nmap.org ) at 2026-10-01 14:47 +0200
+Nmap scan report for 10.114.148.80
+Host is up (0.17s latency).
+
+PORT    STATE SERVICE
+139/tcp open  netbios-ssn
+445/tcp open  microsoft-ds
+
+Host script results:
+| smb2-security-mode: 
+|   3.1.1: 
+|_    Message signing enabled and required
+
+Nmap done: 1 IP address (1 host up) scanned in 6.97 seconds
+### EXIT: 0

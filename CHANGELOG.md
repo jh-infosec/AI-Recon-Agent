@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.7.0] - 2026-10-01
+
+Anonymous, read-only Active Directory enumeration. Three sessions against a live domain controller all ended the same way: the agent correctly worked out that the web port was a decoy and the real surface was AD, then said it had no tools for it. Now it has two.
+
+Added: **`run_smb_enum`** lists shares over a null session and runs null-session domain queries through rpcclient. **`run_ldap_enum`** reads the rootDSE, which names the domain controller and its naming contexts with no credential at all, and attempts bounded user and computer searches when given a base DN.
+
+Both are read-only and anonymous, and **neither takes a username or password, by construction**. A credential field would turn a recon wrapper into a spraying primitive the first time a model decided to try one, and no prompt reliably prevents that. What cannot be passed cannot be abused, which is the same argument as having no exploit tool. Kerberos user enumeration and AS-REP roasting are absent for the same reason they always were: that is the attack on this class of box, and the attack is the operator's to run.
+
+Both parsers were written from captured output in `tests/fixtures/real/ad/`, taken from the live DC before any code existed. That paid for itself immediately, because the capture contains a trap worse than the zone transfer one:
+
+```
+do_connect: Connection to ... failed (NT_STATUS_RESOURCE_NAME_NOT_FOUND)
+Anonymous login successful
+
+	Sharename       Type      Comment
+	---------       ----      -------
+### EXIT: 0
+```
+
+Exit 0, an explicit success string, a connection error that did not stop anything, and a share table with no rows. Read naively that says the null session worked and the server has no shares. A domain controller always has IPC$, NETLOGON and SYSVOL, so an empty table is a refusal, which rpcclient confirms independently with NT_STATUS_ACCESS_DENIED. The parser reports `listing_restricted` rather than an absence of shares.
+
+Writing them also exposed two bugs of my own that the fixtures caught on the first run: `\s?` in the LDAP attribute pattern matched a NEWLINE, so a bare `dn:` swallowed the following line and the DC hostname was lost entirely; and the capture script's own `### ---` bookkeeping lines were being read as section headers.
+
+Added: SMB and LDAP coverage checks. A Windows host with 139/445 or 389/3268 exposed and no attempt made against either is a gap, because on a domain controller that is where the surface actually is. A target that refuses anonymous enumeration SATISFIES the check: the question was asked and answered, correct configuration is a result, and leaving it outstanding would mean a properly hardened DC could never complete the gate.
+
+Fixed: **A hostname on a box with no web port raised a vhost-fuzzing obligation nothing could satisfy.** Vhost fuzzing sends a Host header to a web server; a DC serving no web has nothing to send one to. Latent until now, because hostnames mostly arrived from nmap and DNS on boxes that had a web port, and the LDAP rootDSE yields them on pure-AD boxes. The same unsatisfiable-check shape v0.5.11 cleared. The hostnames are still reported, as a satisfied check saying why they were skipped.
+
+Added: `tests/fixtures/capture_ad_fixtures.sh`, which produced these captures and needs a real DC rather than a local server.
+
+Tests: 42 new (631 total).
+
 ## [0.6.3] - 2026-10-01
 
 From the second run against the same domain controller, which confirmed every v0.6.2 fix and then exposed three more things. The zone transfer read `refused`, the unreachable reverse lookup was reported, the duplicate hostname was gone, and one vhost fuzz of the parent domain satisfied both hostname checks. Then the session did everything right and exited 3.

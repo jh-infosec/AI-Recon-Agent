@@ -1,0 +1,4 @@
+### COMMAND: rpcclient -U  -N 10.114.148.80 -c enumdomusers
+### ---
+result was NT_STATUS_ACCESS_DENIED
+### EXIT: 1

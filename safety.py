@@ -194,6 +194,45 @@ def validate_web_port(port) -> int:
     return value
 
 
+# A base DN is RFC 4514 distinguished-name syntax: comma-separated
+# attribute=value pairs. Deliberately narrow, because this string becomes an
+# argv element for ldapsearch.
+_BASE_DN_RE = re.compile(
+    r"^(?:[A-Za-z][A-Za-z0-9-]{0,20}=[A-Za-z0-9 ._-]{1,64})"
+    r"(?:,\s?[A-Za-z][A-Za-z0-9-]{0,20}=[A-Za-z0-9 ._-]{1,64}){0,15}$"
+)
+
+
+def validate_ldap_base_dn(base_dn: str) -> str:
+    """
+    Validate an LDAP base DN before it becomes a subprocess argument.
+
+    The model supplies this, usually copied from the rootDSE's
+    defaultNamingContext, so it is target-influenced text. The same rule as
+    `validate_search_term` applies first - a leading hyphen would be read as a
+    flag - and then the shape is checked, because an LDAP filter or a
+    wildcarded DN is not a base DN and should not reach the command line.
+    """
+    text = (base_dn or "").strip()
+    if not text:
+        raise NotAuthorizedError("A non-empty base DN is required.")
+    if text.startswith("-"):
+        raise NotAuthorizedError(
+            f"Base DN '{base_dn}' starts with a hyphen and would be read as a "
+            f"command-line flag. Pass the defaultNamingContext from the "
+            f"rootDSE, e.g. 'DC=example,DC=local'."
+        )
+    if len(text) > 400:
+        raise NotAuthorizedError("Base DN is implausibly long; refusing to use it.")
+    if not _BASE_DN_RE.match(text):
+        raise NotAuthorizedError(
+            f"'{base_dn}' is not a plausible LDAP base DN. Expected "
+            f"comma-separated attribute=value pairs such as "
+            f"'DC=example,DC=local'."
+        )
+    return text
+
+
 def validate_search_term(term: str) -> str:
     """
     Validate a free-form search term destined for a subprocess argument.
