@@ -598,6 +598,14 @@ def is_vhost_candidate(name: str) -> bool:
     name = (name or "").strip().rstrip(".").lower()
     if not name or _IPV4.match(name) or ":" in name:
         return False
+    # DNS limits, which also bound what a tampered state file or an odd tool
+    # response can put in front of the model: 253 characters overall and 63
+    # per label. Without these a 500-character string of letters was a valid
+    # "hostname" and became a vhost-fuzzing target.
+    if len(name) > 253:
+        return False
+    if any(len(label) > 63 for label in name.split(".")):
+        return False
     if name.endswith((".in-addr.arpa", ".ip6.arpa")):
         return False
     return bool(_DNS_NAME.match(name))

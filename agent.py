@@ -43,6 +43,7 @@ import completeness
 import console
 import parsers
 import repeats
+import state as state_mod
 from apiclient import call_with_retry, explain
 from knowledge import format_for_prompt
 from report import SessionReport
@@ -372,18 +373,32 @@ def main():
     surface = AttackSurface()
     telemetry = Telemetry(MODEL)
 
+    # Prior state is loaded AFTER the allowlist check, and it cannot influence
+    # it: a snapshot records what an earlier run saw, and nothing in it makes
+    # any host scannable. A missing, unreadable or hostile file yields None
+    # and the session simply starts cold.
+    try:
+        previous = state_mod.load_latest(args.target)
+    except Exception as exc:  # noqa: BLE001
+        print(console.warn(f"could not read prior state ({type(exc).__name__}) - starting cold"))
+        previous = None
+    surface.seed_from_state(previous)
+
     print(console.agent("agent", f"v{__version__} - target {console.c(args.target, console.BOLD)} "
                         f"authorized ({meta['platform']}). Starting..."))
     print(console.agent("agent", f"Reports: {console.c(str(report.path), console.GREY)}"))
 
-    messages = [
-        {
-            "role": "user",
-            "content": (
-                f"Begin recon on target {args.target}. Start with a port/service scan."
-            ),
-        }
-    ]
+    kickoff = f"Begin recon on target {args.target}. Start with a port/service scan."
+    if previous:
+        print(console.agent("agent", (
+            f"Prior session found: {console.c(previous.get('source', ''), console.GREY)} "
+            f"({previous.get('timestamp')}). Carrying it forward.")))
+        # Appended after the instruction, and labelled as recorded data, so it
+        # reads as context rather than as direction. Every value in it has been
+        # coerced, bounded and stripped of line breaks by state.normalise.
+        kickoff = f"{kickoff}\n\n{state_mod.kickoff_summary(previous)}"
+
+    messages = [{"role": "user", "content": kickoff}]
 
     continuations = 0
     call_log = repeats.CallLog()
@@ -515,7 +530,7 @@ def main():
 
                 call_log.record(block.name, block.input, result)
                 report.log_tool_call(block.name, block.input, result)
-                surface.ingest(block.name, block.input, result.get("parsed"))
+                surface.ingest(block.name, block.input, result.get("parsed"), result)
 
                 # Prefer the structured object over raw text. Truncated ASCII
                 # cost tokens and lost information exactly where the model
@@ -601,7 +616,28 @@ def main():
 
     checks = coverage(surface)
     summary = coverage_summary(checks)
-    report.log_coverage(surface.summary(), checks, summary)
+
+    # Record this session and report the change. Wrapped because state is a
+    # convenience: every tool in this session has already run and been paid
+    # for, and a write failure must not cost the report.
+    current = surface.summary()
+    delta = state_mod.diff(previous, current)
+    delta_lines = state_mod.delta_summary(delta)
+    snapshot_name = ""
+    try:
+        written = state_mod.save_snapshot(
+            args.target, meta["platform"], current, summary, call_log.entries())
+        snapshot_name = written.name
+    except Exception as exc:  # noqa: BLE001
+        print(console.warn(
+            f"could not save state ({type(exc).__name__}: {exc}) - "
+            f"this session will not be remembered"))
+    try:
+        report.log_state(previous, delta_lines, snapshot_name)
+    except Exception as exc:  # noqa: BLE001
+        print(console.warn(f"could not write the change section ({type(exc).__name__})"))
+
+    report.log_coverage(current, checks, summary)
     report.log_telemetry(telemetry.summary())
     # Finalisation is the last thing in a session and the most expensive to
     # lose: every tool has already run and been paid for. A rendering bug must
@@ -618,7 +654,27 @@ def main():
         f"Coverage: {summary['satisfied']}/{summary['total']} checks satisfied.",
         cov_colour, console.BOLD)))
     for chk in checks:
-        print(console.check(chk.satisfied, chk.name, chk.detail))
+        print(console.check(chk.satisfied, chk.name, chk.detail,
+                            getattr(chk, "from_prior", False),
+                            getattr(chk, "state", None)))
+    if summary.get("from_prior"):
+        print(console.note(
+            f"{len(summary['from_prior'])} check(s) were satisfied by an earlier "
+            f"session, not by this run"))
+    # A step that ran but produced nothing usable needs a different response
+    # from one that never ran: check the box is reachable, do not just redo the
+    # scan. Call these out so they are not lost among the misses.
+    attempted_gaps = summary.get("blocked", []) + summary.get("empty", []) + summary.get("partial", [])
+    if attempted_gaps:
+        print(console.warn(
+            f"{len(attempted_gaps)} step(s) ran but returned nothing usable "
+            f"(blocked, empty or cut short) - confirm the target is up rather "
+            f"than re-running the same scan"))
+
+    print("\n" + console.agent("agent", console.c("Change since last session:",
+                                                  console.BRIGHT_WHITE, console.BOLD)))
+    for line in delta_lines:
+        print(console.note(line))
 
     t = telemetry.summary()
     cost = console.c(f"${t['estimated_cost_usd']:.4f}", console.BOLD)

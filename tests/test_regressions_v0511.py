@@ -152,8 +152,8 @@ def test_dig_soa_mname_is_a_hostname_rname_is_not():
 def _web_surface():
     s = AttackSurface()
     s.ingest("run_nmap", {}, parsers.parse_nmap_xml(real("nmap.xml")))
-    s.ingest("run_whatweb", {"port": 8099}, {})
-    s.ingest("run_ffuf", {"port": 8099}, {})
+    s.ingest("run_whatweb", {"port": 8099}, {"plugins": {"HTTPServer": ["nginx"]}})
+    s.ingest("run_ffuf", {"port": 8099}, {"results": [{"input": "x", "status": 200}], "count": 1})
     return s
 
 

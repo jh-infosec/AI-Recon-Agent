@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.6.1] - 2026-10-01
+
+Evidence-aware coverage. Prompted by a conference talk on building recon agents, whose most repeated lesson was *completion bias*: an agent marks a step done that produced nothing, and the fix is to verify every step left a real artifact. Our coverage gate had the same blind spot. A port counted as fingerprinted or content-enumerated the moment the tool was invoked, no matter what came back, so a scan that was blocked by bot protection, timed out with nothing, or returned zero paths on a live site all read as PASS.
+
+Changed: **A fingerprint or enumeration check now passes only when the tool produced usable evidence.** A scan that ran but came back blocked, empty or cut short is a stated gap with its own state (EMPTY, BLOCKED or PARTIAL), shown as its own badge in the console and both reports, and called out with advice to confirm the target is reachable rather than re-run the same scan. A clean full run still completes exactly as before.
+
+This reuses signals the parsers already produced (`parse_warning`, `partial`, the empty-scan note) and adds one the gate could not previously see: a scan that timed out with no results. That required passing the full tool result to the surface, not just the parsed output, since a clean empty result and a timed-out-empty one look identical once parsed.
+
+Changed: **Per-port outcomes are carried across sessions.** A prior clean enumeration still satisfies its check as PRIOR, but a prior run that was blocked or empty stays a gap rather than being laundered into a pass. A v0.6.0 snapshot, which recorded that a port was enumerated but not how it went, does not grant a pass: the safe reading is to re-verify, not to inherit a result we cannot substantiate.
+
+This is the project's own "an absence must be stated" principle applied to its own gate: a step that ran but produced nothing is not the same as one that produced content, and reporting it as complete is the failure the gate exists to catch.
+
+What the talk also covered, and what was deliberately NOT taken: techniques for defeating model safety classifiers to run unauthorized testing (a fabricated authorization document on disk, context-overloading, a classifier-evasion trick). Those are the opposite of this project's premise - authorized targets only, allowlist that fails closed, no exploitation - and have no place in it.
+
+Tests: 29 new (543 total). The behavioural tests were verified against v0.6.0, where a blocked or empty enumeration was a silent PASS.
+
+## [0.6.0] - 2026-09-30
+
+State across runs. A session now records what it found, and the next session against the same target loads it, reports what CHANGED, and counts the earlier work towards methodology coverage instead of demanding it again.
+
+Added: `state.py`. Each session writes a timestamped snapshot to `state/<target>/`. Snapshots are kept rather than overwritten, so the folder becomes a history of the box as you worked it. A rerun opens with a summary of the previous session and a new "Change since last session" section at the top of both reports: new ports, ports that have gone, services whose version changed, new hostnames and new paths. On a first run it says so rather than reporting everything as new.
+
+Added: The attack surface now tracks discovered paths per port, merged from both fuzzers, which is what makes "NEW paths on 8099: /config.php" possible. Paths from a scan flagged `parse_warning` are not recorded, because a hole in the output is not a finding.
+
+Changed: **Coverage is cumulative across sessions, and says when it is.** A check satisfied by an earlier run passes, and is labelled PRIOR rather than PASS, in the console, the Markdown report and the HTML report, with the timestamp of the session that earned it. The summary counts inherited checks separately. Reporting last week's work as though it happened today would be the same "absence implied rather than stated" failure this gate exists to catch.
+
+Only actions carry forward, never findings. A port that was open last week is not evidence it is open now, because lab machines are redeployed and their addresses reused, so the surface is still established by this session's scan.
+
+Security: a snapshot is written to a path named after the target, and read back into the model's opening message, so it gets treated as hostile input. The filename is reduced to one safe component and the resolved path is confirmed to sit under the state directory, which is the check that actually holds and which refuses a symlink pointing out of it. On load, every value is re-validated: hostnames against the same rule the surface model uses, paths against a URL-path shape, check names against the closed set the coverage gate emits, ports against a range, and all text flattened so nothing can pose as a new instruction line. Unknown fields are dropped rather than passed through. Nothing in a snapshot can widen authorization; the allowlist check runs first and is unaffected by it.
+
+Fixed: `is_vhost_candidate` accepted a hostname of any length, so a 500-character string was a valid vhost target. DNS limits are now enforced: 253 characters overall, 63 per label. Found by a state test, and it tightens the v0.5.11 hostname validation as well.
+
+Fixed: **The HTML report contained an em dash**, as the named entity, which renders as one in a browser. It had survived three releases of the style test because the test searched for the character and an entity is plain ASCII. The style test now checks for the entity forms too, verified by planting one and watching it fail.
+
+`state/` is gitignored for the same reason `config/targets.yaml` is: a committed state folder is a list of machines someone scanned, with their services and paths.
+
+Security, from an adversarial review of `state.py` by a separate agent that read the module cold. Four of its findings were real and are fixed, each with a regression test verified against the code as first written:
+
+- **A planted symlink could redirect a snapshot write outside the state directory.** Containment was checked on the snapshot path, then the write went to a sibling `.json.tmp` that was never checked. The temp path is contained now and opened with `O_NOFOLLOW|O_EXCL`, which also closes the window between the check and the write that a check alone cannot.
+- **A symlink named like a snapshot was read and fed to the model.** The listing filtered on `is_file()`, which follows symlinks, so any readable JSON file under 5MB could be pulled into the opening message. Snapshots must now be regular files that resolve inside the state root.
+- **A deeply nested snapshot destroyed a target's whole history.** `RecursionError` is a `RuntimeError`, so it escaped the fallback loop instead of costing one file.
+- **Two different targets could share a state folder**, through truncation or separator flattening, which would have shown one machine's findings in the other's kickoff. A digest of the full target is appended whenever the name is altered; an ordinary IP or hostname still gets a readable folder.
+
+Also tightened: a snapshot written by a newer schema is refused rather than partly understood, vhost domains in a snapshot are validated on load as well as on use, and a bare string where a list belongs no longer yields one entry per character.
+
+Fixed: **The coverage gate matched hostnames by substring, so one vhost fuzz could satisfy every hostname check on a box.** Fuzzing `htb`, or even a single character, marked `box.htb`, `dev.box.htb` and `secret.internal.htb` all covered, and `box.htb` wrongly covered `boxes.htb`. A hostname is covered now when it is the fuzzed domain or sits under it, and a covering domain needs at least two labels. This is a pre-existing defect, not one state introduced: it has been in the gate since vhost checks were added in v0.4.0, and it is exactly the false pass the gate exists to prevent.
+
+
+Tests: 71 new (514 total).
+
 ## [0.5.13] - 2026-09-29
 
 Fixed: **The style test scanned the wrong directory when run from outside the repo.** It set its scan root to `Path(__file__).parent.parent` without resolving the path first. Run from inside the repo that was the repo; run with `python -m pytest` from your home directory, the relative path collapsed to `.` and it walked all of `~`, failing on em dashes in pip's vendored packages, VS Code extensions and old lab files. The test that exists to catch "a check that passes for the wrong reason" had that bug itself, and it hid because every prior run happened from inside the repo.

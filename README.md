@@ -1,6 +1,6 @@
 # ai-recon-agent
 
-**v0.5.13**
+**v0.6.1**
 
 ai-recon-agent is a small security study kit with two halves: a **red-team
 recon agent** for practicing enumeration on machines you're authorized to
@@ -131,6 +131,7 @@ agent.py                  - RED TEAM: recon loop (Claude + tool-use)
 version.py                - single source of the project version
 parsers.py                - raw tool output -> structured objects
 surface.py                - attack surface model + methodology coverage gate
+state.py                  - per-target memory across sessions (path-locked)
 telemetry.py              - per-turn token counts and cost estimate
 console.py                - coloured output, command echo, finding highlights
 completeness.py           - validates finish-tool payloads
@@ -148,6 +149,7 @@ reports/                  - generated reports land here (git-ignored)
 tests/                    - pytest suites: safety gate, workspace lock, regressions
 tests/fixtures/real/      - verbatim tool output the parser tests read (never hand-edited)
 tests/fixtures/capture_fixtures.sh - re-captures it against a local web server
+state/                    - session snapshots, one folder per target (git-ignored)
 pyproject.toml            - ruff + pytest config
 requirements.txt          - runtime deps       requirements-dev.txt - dev/CI deps
 .github/workflows/ci.yml  - lints, tests, and audits deps on push
@@ -161,7 +163,7 @@ architecture.md           - design principles, constraints, cleared defects
 ```bash
 pip install -r requirements-dev.txt
 ruff check .      # lint
-python -m pytest -q  # run the full suite (443 tests)
+python -m pytest -q  # run the full suite (543 tests)
 pip-audit -r requirements.txt   # supply-chain audit
 ```
 
@@ -178,19 +180,43 @@ tool-use turns. Swap to `claude-opus-5` for heavier reasoning per step if
 you don't mind the cost. Verify current model IDs at
 https://docs.claude.com/en/docs/about-claude/models/overview
 
+## Running a box more than once
+
+A box is rarely finished in one session. Each run writes a snapshot to
+`state/<target>/`, and the next run against the same target:
+
+- opens with a summary of what the previous session found, framed as a record
+  to confirm rather than as fact, because a lab machine is redeployed between
+  sessions and its address reused;
+- reports what CHANGED at the top of both reports: new ports, ports that have
+  gone, a service whose version moved, new hostnames, new paths;
+- counts the earlier session's work towards methodology coverage, marking
+  those checks PRIOR rather than PASS, so an inherited pass never reads as one
+  earned today. A step that was blocked or empty last session stays a gap, not
+  an inherited pass.
+
+Snapshots accumulate rather than overwrite, so `state/<target>/` is a history
+of the box. The folder is git-ignored: a committed state directory is a list of
+machines someone scanned, along with their services and paths.
+
 ## Exit codes
 
 `agent.py` exits `0` when the methodology coverage gate is satisfied, `3` when
 the session ran but left gaps (a web port never fingerprinted, a discovered
 hostname never fuzzed), and `1` on error. The distinct code exists so a harness
 can tell "incomplete" from "broken" - and so you notice when the agent declared
+itself finished before it was. A web check counts as satisfied only when the
+tool produced usable output: a scan that was blocked, timed out, or came back
+empty is reported as a gap (EMPTY / BLOCKED / PARTIAL), not a pass, because it
+needs a different response - confirm the target is up rather than re-run the
+same scan.
 itself finished before it was.
 
 ## Roadmap
 
 `ROADMAP.md` is the source of truth for what ships when, and
 `architecture.md` carries the design reasoning, the known constraints and a
-record of every defect cleared so far. In short: v0.6.0 adds state across
+record of every defect cleared so far. In short: v0.6.0 added state across
 runs, so a second session against a box builds on the first instead of
 starting cold, and v0.8.0 is the purple-team feature that narrates a recon
 report and a hunt report of the same box from both sides.

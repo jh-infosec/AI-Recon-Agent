@@ -235,6 +235,48 @@ The general form: anywhere the model has to distinguish "no result" from "no
 answer", say which one it is rather than leaving it to be inferred from a hole
 in the data.
 
+### Prior work counts, and says that it is prior
+
+Coverage is cumulative across sessions: a fuzz completed last week satisfies
+its check today, because demanding it again is the wasted work that carrying
+state exists to prevent. But a check satisfied by an earlier run is labelled
+PRIOR rather than PASS, in the console and both reports, with the timestamp of
+the session that earned it.
+
+The distinction matters because the alternative is a run that did nothing
+showing five of five green. That is the same failure as an empty scan arriving
+as an absence, or a model calling the finish tool without a conclusion: a true
+statement arranged so the reader draws a false one. Cumulative coverage is
+correct; silently cumulative coverage is not.
+
+For the same reason only ACTIONS carry forward, never findings. A port that
+was open last week is not evidence it is open now, since lab machines are
+redeployed and their addresses reused, so every session still establishes the
+surface with its own scan.
+
+### A step that ran is not a step that produced evidence
+
+The coverage gate's job is to catch work that was declared done but not
+reached. For a while it did that for a step never attempted, but not for a step
+attempted and come back empty: a port counted as content-enumerated the moment
+gobuster or ffuf was invoked, whatever the result. A scan blocked by bot
+protection, cut short by a timeout, or returning nothing on a live site all
+passed.
+
+That is the same failure the gate exists to catch, one level down. "The tool
+ran" and "the tool produced the evidence it was supposed to" are different
+claims, and a gate that conflates them reports the first while implying the
+second. So a fingerprint or enumeration check now passes only on usable output,
+and a run that came back blocked, empty or cut short is a stated gap with its
+own state, because it calls for a different response: confirm the target is
+reachable, not redo a scan that already ran.
+
+This came from watching how someone building the same kind of agent at scale
+describes the problem. They call it completion bias and answer it with a review
+pass that checks every step left a real, non-empty artifact. The deterministic
+coverage gate is where that check belongs here, and it was half-built: it
+counted attempts, not evidence.
+
 ### The model reasons; it does not decide what is true
 
 Tools produce observations. The model orders them, explains them and decides
@@ -321,6 +363,39 @@ table for the report; `compact_for_model` renders it down to a payload budget
 for the prompt by degrading detail progressively. It never drops an item: a port is what the
 model and the coverage gate both reason from, and a banner is not.
 
+### state.py
+
+Per-target memory. Each session writes a timestamped snapshot to
+`state/<target>/`; the next run against that target loads the most recent,
+summarises it into the kickoff message, reports the delta and carries the
+earlier work into the coverage gate. Snapshots accumulate rather than being
+replaced, so the directory is a record of the box over time.
+
+Two properties make this the most security-sensitive module after `safety.py`,
+because it is the only place the project writes a path named after something a
+target influenced and then reads that file back into a prompt:
+
+**A snapshot path cannot leave the state directory.** The filename is reduced
+to a single component, and the resolved path is confirmed to sit under the
+state root before any read or write. The resolution check is the one that
+holds: it survives symlinks and anything the name rules failed to anticipate,
+and it is the same containment the blue-team log tools use.
+
+**A snapshot is data, never instruction.** It is rendered into the model's
+opening message, so a hand-edited or planted file is an injection path. The
+file on disk cannot be proven to be the file we wrote, so everything is
+re-validated on load. Values are coerced and bounded; hostnames go through
+`is_vhost_candidate`, paths must match a URL-path shape, check names must match
+the closed set the coverage gate emits, and all text is flattened so nothing
+can present itself as a new instruction line. Unknown fields are dropped
+rather than passed through. A service banner is the one field that cannot be
+validated structurally, because it is free text the target chose; it is kept
+short and stripped to banner characters, and what actually contains it is the
+allowlist gate, which does not consult state at all.
+
+Nothing in a snapshot widens authorization. `assert_authorized` runs first and
+is unaffected by anything stored here.
+
 ### surface.py
 
 `AttackSurface` accumulates what was discovered and what was done about it;
@@ -352,6 +427,18 @@ was built for, so known non-content HTTP endpoints are excluded by port and by
 product string - and the exclusion is reported rather than hidden, because a
 check that silently vanishes is indistinguishable from one that was never
 written.
+
+### Coverage states
+
+A `Check` carries a `state`, finer than its satisfied flag: `pass` and `prior`
+are satisfied; `miss` never ran; `empty`, `blocked` and `partial` ran but did
+not produce usable evidence. The surface records a per-port outcome for
+fingerprinting and enumeration (`ok` / `empty` / `blocked` / `partial`),
+derived from the parser's signals plus the tool result's timeout and exit
+code, and the best outcome a port saw in a session wins. Outcomes are stored in
+the snapshot and carried forward, so a prior clean result satisfies a check
+while a prior gap does not. A pre-v0.6.1 snapshot has no outcomes, so a prior
+enumeration from one is re-verified rather than trusted.
 
 ### telemetry.py
 
@@ -700,12 +787,10 @@ checked against, and so the reasoning survives the gap between deciding and
 building. When one ships, its section moves up into the body of this document
 and stops being provisional.
 
-### Per-target state
+### Per-target state (shipped in v0.6.0, see state.py above)
 
-`state/<target>.json` holding discovered ports, services, hostnames, paths and
-the set of tool calls already made, summarised into the kickoff message. A
-second run reports what changed rather than rediscovering everything, and the
-coverage gate becomes cumulative across sessions rather than per-session.
+Held as `state/<target>/<timestamp>.json` rather than one file per target, so
+the history of a box is kept rather than overwritten.
 
 ### Playbooks and scoped knowledge injection
 

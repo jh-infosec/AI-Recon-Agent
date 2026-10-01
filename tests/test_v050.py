@@ -347,9 +347,12 @@ def test_vhost_check_is_skipped_for_an_ec2_hostname():
 def test_only_the_genuine_gap_remains():
     """The live run reported four gaps; three were the gate being wrong."""
     s = _live_surface()
-    for tool, inp in [("run_whatweb", {"port": 7777}), ("run_whatweb", {"port": 7778}),
-                      ("run_ffuf", {"mode": "dir", "port": 7778})]:
-        s.ingest(tool, inp, {})
+    for tool, inp, parsed in [
+        ("run_whatweb", {"port": 7777}, {"plugins": {"HTTPServer": ["nginx"]}}),
+        ("run_whatweb", {"port": 7778}, {"plugins": {"HTTPServer": ["nginx"]}}),
+        ("run_ffuf", {"mode": "dir", "port": 7778}, {"results": [{"input": "x", "status": 200}], "count": 1}),
+    ]:
+        s.ingest(tool, inp, parsed)
     missed = coverage_summary(coverage(s))["missed"]
     assert missed == ["Web service on 7777 content-enumerated"]
 

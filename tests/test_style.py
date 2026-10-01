@@ -34,6 +34,15 @@ BANNED = {
     "\u2015": "horizontal bar",
 }
 CHECKED_SUFFIXES = {".py", ".md", ".txt", ".yaml", ".yml", ".toml"}
+# The HTML report is built as a string, so a dash can also arrive as an entity
+# that renders as one in a browser. The named em-dash entity sat in report.py
+# through three releases of this test, because the test looked for the
+# character only and an entity is plain ASCII.
+# Built rather than written out, for the same reason BANNED uses \u escapes:
+# a file that lists the literal strings it searches for always finds itself.
+BANNED_ENTITIES = tuple(
+    "&" + suffix for suffix in ("mdash;", "ndash;", "#8212;", "#8211;", "#x2014;", "#x2013;")
+)
 # Never scanned even under a bounded walk: dependency and tooling trees carry
 # their own em dashes and are not this project's text.
 _SKIP_DIRS = {"__pycache__", ".git", ".venv", "venv", "reports",
@@ -102,6 +111,20 @@ def test_no_long_dashes_anywhere(char, name):
     assert not offenders, f"{name} found in: {', '.join(offenders)}"
 
 
+@pytest.mark.parametrize("entity", BANNED_ENTITIES)
+def test_no_long_dash_entities_in_source(entity):
+    """An entity that renders as an em dash is an em dash to the reader."""
+    offenders = []
+    for path in _project_files():
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        if entity in text:
+            offenders.append(str(path.relative_to(ROOT)))
+    assert not offenders, f"{entity} found in: {', '.join(offenders)}"
+
+
 def test_generated_report_text_has_no_long_dashes(tmp_path, monkeypatch):
     """The rule covers output, not just source."""
     import report as report_mod
@@ -115,6 +138,8 @@ def test_generated_report_text_has_no_long_dashes(tmp_path, monkeypatch):
         text = produced.read_text(encoding="utf-8")
         for char, name in BANNED.items():
             assert char not in text, f"{name} in {produced.name}"
+        for entity in BANNED_ENTITIES:
+            assert entity not in text, f"{entity} in {produced.name}"
 
 
 def test_scan_guidance_notes_have_no_long_dashes():

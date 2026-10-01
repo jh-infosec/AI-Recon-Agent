@@ -46,6 +46,14 @@ GREY = "\033[90m"
 ON_GREEN = "\033[42m"
 ON_RED = "\033[41m"
 ON_WHITE = "\033[47m"
+# Bright black background: a coverage check inherited from an earlier session
+# is satisfied but was not earned today, and a grey badge says that at a
+# glance where a green one would not.
+ON_GREY = "\033[100m"
+# A scan that ran but produced nothing usable is neither a pass nor a plain
+# miss. Amber (yellow background) marks EMPTY, BLOCKED and PARTIAL so they read
+# as "attempted, came back empty or turned away" at a glance.
+ON_YELLOW = "\033[43m"
 
 # Kept as aliases so nothing that imported the old names breaks.
 YELLOW = BRIGHT_WHITE
@@ -125,18 +133,35 @@ def note(text: str) -> str:
     return f"      {c(text, GREY)}"
 
 
-def check(satisfied: bool, name: str, detail: str) -> str:
+# Coverage states to badge text and colours. EMPTY/BLOCKED/PARTIAL are the
+# v0.6.1 states for a step that ran but did not produce usable evidence: a
+# different problem from "never ran", so a different badge.
+_CHECK_BADGE = {
+    "pass": (" PASS ", ON_GREEN, WHITE),
+    "prior": (" PRIOR ", ON_GREY, WHITE),
+    "miss": (" MISS ", ON_RED, BRIGHT_RED),
+    "empty": (" EMPTY ", ON_YELLOW, BRIGHT_WHITE),
+    "blocked": (" BLOCKED ", ON_YELLOW, BRIGHT_WHITE),
+    "partial": (" PARTIAL ", ON_YELLOW, BRIGHT_WHITE),
+}
+
+
+def check(satisfied: bool, name: str, detail: str, from_prior: bool = False,
+          state: str | None = None) -> str:
     """
-    Coverage marks as badges: black on green for pass, black on red for miss.
-    This is the one place black earns its keep - as text on a colour block it
-    is legible on any background, where black on the terminal itself would not
-    be.
+    Coverage marks as badges: black on a colour block for the label, because
+    black as a foreground on a dark terminal is invisible but black on a
+    colour reads on any background.
+
+    `state` carries the finer outcome (pass/prior/miss/empty/blocked/partial).
+    It is optional so older two- and three-argument calls still work: without
+    it the badge is derived from `satisfied` and `from_prior` as before.
     """
-    if satisfied:
-        return (f"  {c(' PASS ', BLACK, ON_GREEN, BOLD)} "
-                f"{c(name, WHITE)} {c('- ' + detail, GREY)}")
-    return (f"  {c(' MISS ', BLACK, ON_RED, BOLD)} "
-            f"{c(name, BRIGHT_RED, BOLD)} {c('- ' + detail, GREY)}")
+    if state is None:
+        state = "prior" if (satisfied and from_prior) else ("pass" if satisfied else "miss")
+    label, bg, name_colour = _CHECK_BADGE.get(state, _CHECK_BADGE["miss"])
+    return (f"  {c(label, BLACK, bg, BOLD)} "
+            f"{c(name, name_colour)} {c('- ' + detail, GREY)}")
 
 
 def heading(text: str) -> str:

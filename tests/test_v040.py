@@ -188,8 +188,8 @@ def test_bare_scan_leaves_everything_outstanding():
 def test_full_methodology_satisfies_the_gate():
     s = _scanned_surface()
     for port in (80, 443):
-        s.ingest("run_whatweb", {"port": port}, {})
-        s.ingest("run_gobuster", {"port": port}, {})
+        s.ingest("run_whatweb", {"port": port}, {"plugins": {"HTTPServer": ["nginx"]}})
+        s.ingest("run_gobuster", {"port": port}, {"results": [{"input": "x", "status": 200}], "count": 1})
     s.ingest("run_dns_enum", {"domain": "testbox.htb"}, {})
     for host in list(s.hostnames):
         s.ingest("run_ffuf", {"mode": "vhost", "domain": host}, {})

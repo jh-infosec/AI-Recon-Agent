@@ -134,6 +134,45 @@ def is_content_web_service(port: int, service: str, product: str) -> tuple:
     return True, ""
 
 
+# An enumeration or fingerprint run produces one of these. "ok" means it
+# produced usable evidence; "empty" means it ran cleanly and found nothing,
+# which on a live web service is unusual rather than conclusive; "blocked"
+# means it did not produce a readable result at all - a parse failure, a
+# timeout with nothing, or a non-zero exit - and most often means bot
+# protection, a dying lab box or a VPN drop. "partial" is a timed-out scan
+# that still returned some results.
+_OUTCOME_RANK = {"blocked": 0, "empty": 1, "partial": 2, "ok": 3}
+
+
+def _enum_outcome(parsed: dict, result: dict) -> str:
+    parsed, result = parsed or {}, result or {}
+    if parsed.get("parse_error") or parsed.get("parse_warning"):
+        return "blocked"
+    if parsed.get("partial"):
+        return "partial"
+    if parsed.get("results"):
+        return "ok"
+    # No results. A clean finish is "empty"; a timeout or error exit with
+    # nothing to show is a scan that did not really run.
+    if result.get("timed_out") or result.get("returncode"):
+        return "blocked"
+    return "empty"
+
+
+def _fingerprint_outcome(parsed: dict, result: dict) -> str:
+    parsed, result = parsed or {}, result or {}
+    if parsed.get("parse_error") or parsed.get("parse_warning"):
+        return "blocked"
+    # whatweb reports at least a Server header for any service it reached, so
+    # no plugins at all means it was blocked or the service is down, not that
+    # the site has no fingerprint.
+    if parsed.get("plugins"):
+        return "ok"
+    if result.get("timed_out") or result.get("returncode"):
+        return "blocked"
+    return "empty"
+
+
 @dataclass
 class AttackSurface:
     open_ports: set = field(default_factory=set)
@@ -146,16 +185,47 @@ class AttackSurface:
     scanned: bool = False                             # has nmap run at all
 
     # what was done
+    # port -> "ok" | "empty" | "blocked". The talk this came from calls the
+    # failure "completion bias": an agent marks a step done that produced
+    # nothing. A scan that ran but was blocked, timed out or came back empty is
+    # not the same as one that enumerated content, and the coverage gate has to
+    # tell them apart or it reports work that did not happen.
+    enum_outcome: dict = field(default_factory=dict)
+    fingerprint_outcome: dict = field(default_factory=dict)
+    # port -> {path: status}. Fuzz results are the other half of the surface:
+    # a port is where the application listens, a path is what it exposes, and
+    # a rerun that cannot say "this path is new" is not reporting change.
+    paths: dict = field(default_factory=dict)
     fingerprinted: set = field(default_factory=set)   # ports whatweb ran on
     enumerated: set = field(default_factory=set)      # ports gobuster/ffuf-dir ran on
     vhost_fuzzed: set = field(default_factory=set)    # domains ffuf-vhost ran on
     dns_enumerated: bool = False
     searchsploit_queries: list = field(default_factory=list)
 
+    # Work carried in from an earlier session's state file. Kept separate from
+    # the sets above so every check can report which session satisfied it.
+    prior_fingerprinted: set = field(default_factory=set)
+    prior_enumerated: set = field(default_factory=set)
+    prior_vhost_fuzzed: set = field(default_factory=set)
+    prior_dns_enumerated: bool = False
+    prior_enum_outcome: dict = field(default_factory=dict)
+    prior_fingerprint_outcome: dict = field(default_factory=dict)
+    prior_timestamp: str = ""
+
     # ------------------------------------------------------------------ feed
-    def ingest(self, tool_name: str, tool_input: dict, parsed: dict | None):
-        """Update the surface from one tool call and its parsed result."""
+    def ingest(self, tool_name: str, tool_input: dict, parsed: dict | None,
+               result: dict | None = None):
+        """
+        Update the surface from one tool call.
+
+        `result` is the full tool-result dict (timed_out, returncode, parsed).
+        It is optional so existing callers and tests that pass only `parsed`
+        still work, but without it a scan that timed out with no results cannot
+        be told from one that genuinely found nothing - the exact distinction
+        the outcome classification exists to make - so agent.py passes it.
+        """
         parsed = parsed or {}
+        result = result or {}
 
         if tool_name == "run_nmap":
             self.scanned = True
@@ -184,10 +254,15 @@ class AttackSurface:
             self._add_hostnames(parsed)
 
         elif tool_name == "run_whatweb":
-            self.fingerprinted.add(int(tool_input.get("port", 80)))
+            port = int(tool_input.get("port", 80))
+            self.fingerprinted.add(port)
+            self.fingerprint_outcome[port] = _fingerprint_outcome(parsed, result)
 
         elif tool_name == "run_gobuster":
-            self.enumerated.add(int(tool_input.get("port", 80)))
+            port = int(tool_input.get("port", 80))
+            self.enumerated.add(port)
+            self._record_enum_outcome(port, parsed, result)
+            self._add_paths(port, parsed)
 
         elif tool_name == "run_ffuf":
             if tool_input.get("mode") == "vhost":
@@ -195,7 +270,10 @@ class AttackSurface:
                 if domain:
                     self.vhost_fuzzed.add(domain)
             else:
-                self.enumerated.add(int(tool_input.get("port", 80)))
+                port = int(tool_input.get("port", 80))
+                self.enumerated.add(port)
+                self._record_enum_outcome(port, parsed, result)
+                self._add_paths(port, parsed)
 
         elif tool_name == "run_dns_enum":
             self.dns_enumerated = True
@@ -205,6 +283,68 @@ class AttackSurface:
             q = (tool_input.get("query") or "").strip()
             if q:
                 self.searchsploit_queries.append(q)
+
+    def seed_from_state(self, previous: dict | None) -> None:
+        """
+        Carry an earlier session's work forward.
+
+        Only ACTIONS are carried, never findings. A port that was open last
+        week is not evidence it is open now - lab machines are redeployed and
+        their addresses reused - so the surface still has to be established by
+        this session's scan. What does carry is what was already DONE, so a
+        follow-up run is not marked down for skipping a fuzz it completed.
+
+        Everything here has been through state.normalise, and hostnames are
+        re-checked against is_vhost_candidate on the way in regardless.
+        """
+        if not previous:
+            return
+        actions = previous.get("actions") or {}
+        self.prior_fingerprinted |= {
+            int(p) for p in actions.get("fingerprinted", []) if isinstance(p, int)
+        }
+        self.prior_enumerated |= {
+            int(p) for p in actions.get("enumerated", []) if isinstance(p, int)
+        }
+        self.prior_vhost_fuzzed |= {
+            d for d in actions.get("vhost_fuzzed", [])
+            if isinstance(d, str) and is_vhost_candidate(d)
+        }
+        self.prior_dns_enumerated = bool(actions.get("dns_enumerated"))
+        for port, outcome in (actions.get("enum_outcome") or {}).items():
+            self.prior_enum_outcome[int(port)] = outcome
+        for port, outcome in (actions.get("fingerprint_outcome") or {}).items():
+            self.prior_fingerprint_outcome[int(port)] = outcome
+        self.prior_timestamp = str(previous.get("timestamp") or "")
+
+    def _record_enum_outcome(self, port: int, parsed: dict, result: dict) -> None:
+        # The best outcome a port has seen this session wins: two gobuster runs
+        # on :80, one blocked and one that found paths, is an enumerated port,
+        # not a blocked one. _OUTCOME_RANK orders them.
+        new = _enum_outcome(parsed, result)
+        current = self.enum_outcome.get(port)
+        if current is None or _OUTCOME_RANK[new] > _OUTCOME_RANK[current]:
+            self.enum_outcome[port] = new
+
+    def _add_paths(self, port: int, parsed: dict) -> None:
+        """
+        Record discovered paths. A partial scan still contributes what it
+        found, and a scan whose output could not be read contributes nothing:
+        storing paths from a run flagged `parse_warning` would put a hole in
+        the record and call it a finding.
+        """
+        if parsed.get("parse_warning"):
+            return
+        bucket = self.paths.setdefault(port, {})
+        for r in parsed.get("results", []) or []:
+            if not isinstance(r, dict):
+                continue
+            name = r.get("path") or r.get("input")
+            status = r.get("status")
+            if not isinstance(name, str) or not name:
+                continue
+            path = name if name.startswith("/") else "/" + name
+            bucket[path] = status
 
     def _add_hostnames(self, parsed: dict) -> None:
         # Every hostname becomes a vhost-fuzzing obligation in the coverage
@@ -225,6 +365,14 @@ class AttackSurface:
             "hostnames": sorted(self.hostnames),
             "dns_open": self.dns_open,
             "non_content_http": {str(k): v for k, v in sorted(self.non_content_http.items())},
+            "paths": {
+                str(port): dict(sorted(found.items()))
+                for port, found in sorted(self.paths.items())
+            },
+            "enum_outcome": {str(k): v for k, v in sorted(self.enum_outcome.items())},
+            "fingerprint_outcome": {
+                str(k): v for k, v in sorted(self.fingerprint_outcome.items())
+            },
         }
 
 
@@ -233,6 +381,57 @@ class Check:
     name: str
     satisfied: bool
     detail: str
+    # True when a PREVIOUS session did this work, not this one. Coverage is
+    # cumulative across sessions, but a check satisfied by an earlier run has
+    # to say so: reporting prior work as if it happened today is exactly the
+    # "absence implied rather than stated" failure this gate exists to catch.
+    from_prior: bool = False
+    # Finer-grained than satisfied/not. "pass" and "prior" are satisfied;
+    # "miss" never ran; "empty" ran and found nothing; "blocked" ran but
+    # produced no readable result; "partial" timed out with some. The last
+    # three are the cases a bare pass/fail hid - a step that ran but did not
+    # produce the evidence it was supposed to.
+    state: str = "pass"
+
+
+def _evidence_check(name: str, now_outcome: str | None, prior_outcome: str | None,
+                    when: str) -> Check:
+    """
+    A check whose pass depends not on whether a tool ran but on whether it
+    produced usable evidence.
+
+    `now_outcome` / `prior_outcome` are "ok" | "partial" | "empty" | "blocked"
+    | None (never run), for this session and for a carried-forward one.
+
+    Only "ok" is a clean pass. "partial", "empty" and "blocked" ran but did
+    not finish the job, so they are gaps with a state that says which, rather
+    than a green tick over a scan that found nothing or was turned away. A
+    prior clean result stands in for a missing or failed one this session,
+    because the work was genuinely done before; a prior gap does not paper over
+    a gap now.
+    """
+    ok = "the tool ran and returned usable results"
+    gap = {
+        "partial": "the scan timed out partway; MISSING IS NOT ABSENT, so this "
+                   "is not a finished enumeration",
+        "empty": "the scan ran but found nothing, which on a live service is "
+                 "unusual - check the target is up rather than trusting the blank",
+        "blocked": "the scan produced no readable result (blocked, timed out, or "
+                   "errored); it did not really run",
+    }
+    if now_outcome == "ok":
+        return Check(name, True, ok, state="pass")
+    if prior_outcome == "ok":
+        stamp = f" ({when})" if when else ""
+        return Check(name, True, f"{ok} in a previous session{stamp}",
+                     from_prior=True, state="prior")
+    if now_outcome in gap:
+        return Check(name, False, gap[now_outcome], state=now_outcome)
+    if prior_outcome in gap:
+        stamp = f" ({when})" if when else ""
+        return Check(name, False, f"{gap[prior_outcome]} (previous session{stamp})",
+                     state=prior_outcome)
+    return None  # never run anywhere; caller emits the plain miss
 
 
 def coverage(surface: AttackSurface) -> list:
@@ -269,22 +468,28 @@ def coverage(surface: AttackSurface) -> list:
         return checks
 
     for port in sorted(surface.web_ports):
-        checks.append(
-            Check(
-                f"Web service on {port} fingerprinted",
-                port in surface.fingerprinted,
-                "whatweb ran" if port in surface.fingerprinted
-                else f"port {port} serves HTTP but was never fingerprinted",
-            )
+        fp_name = f"Web service on {port} fingerprinted"
+        fp = _evidence_check(
+            fp_name,
+            surface.fingerprint_outcome.get(port),
+            surface.prior_fingerprint_outcome.get(port),
+            surface.prior_timestamp,
         )
-        checks.append(
-            Check(
-                f"Web service on {port} content-enumerated",
-                port in surface.enumerated,
-                "directory enumeration ran" if port in surface.enumerated
-                else f"port {port} serves HTTP but no directory enumeration was run",
-            )
+        checks.append(fp or Check(
+            fp_name, False,
+            f"port {port} serves HTTP but was never fingerprinted", state="miss"))
+
+        en_name = f"Web service on {port} content-enumerated"
+        en = _evidence_check(
+            en_name,
+            surface.enum_outcome.get(port),
+            surface.prior_enum_outcome.get(port),
+            surface.prior_timestamp,
         )
+        checks.append(en or Check(
+            en_name, False,
+            f"port {port} serves HTTP but no directory enumeration was run",
+            state="miss"))
 
     for port, why in sorted(surface.non_content_http.items()):
         checks.append(
@@ -296,14 +501,14 @@ def coverage(surface: AttackSurface) -> list:
         )
 
     if surface.dns_open:
-        checks.append(
-            Check(
-                "DNS service enumerated",
-                surface.dns_enumerated,
-                "dns enumeration ran" if surface.dns_enumerated
-                else "port 53 is open but no zone transfer or record lookup was attempted",
-            )
-        )
+        checks.append(_did(
+            "DNS service enumerated",
+            surface.dns_enumerated,
+            surface.prior_dns_enumerated,
+            "dns enumeration ran",
+            "port 53 is open but no zone transfer or record lookup was attempted",
+            surface.prior_timestamp,
+        ))
 
     for host in sorted(surface.hostnames):
         if is_infrastructure_hostname(host):
@@ -316,22 +521,65 @@ def coverage(surface: AttackSurface) -> list:
                 )
             )
             continue
-        checks.append(
-            Check(
-                f"Virtual hosts fuzzed for {host}",
-                any(host in d or d in host for d in surface.vhost_fuzzed),
-                _vhost_detail(host, surface.vhost_fuzzed),
-            )
-        )
+        now = any(vhost_covered(host, d) for d in surface.vhost_fuzzed)
+        prior = any(vhost_covered(host, d) for d in surface.prior_vhost_fuzzed)
+        checks.append(_did(
+            f"Virtual hosts fuzzed for {host}",
+            now, prior,
+            _vhost_detail(host, surface.vhost_fuzzed) if now else "vhost fuzzing ran",
+            _vhost_detail(host, surface.vhost_fuzzed),
+            surface.prior_timestamp,
+        ))
 
     return checks
+
+
+def vhost_covered(host: str, fuzzed: str) -> bool:
+    """
+    Does a vhost fuzz against `fuzzed` cover the hostname `host`?
+
+    Yes when it is the same name, or when `host` sits under `fuzzed`, because
+    fuzzing FUZZ.<domain> is what discovers names under that domain.
+
+    This used to be a substring test in both directions, which meant any short
+    fuzzed string satisfied every hostname containing it: one fuzz against
+    "htb" marked box.htb, dev.box.htb and secret.internal.htb all covered, and
+    a single character did the same. That is precisely the false pass this
+    gate exists to prevent. A suffix match also requires the covering domain
+    to have at least two labels, so a bare TLD cannot blanket-satisfy a run.
+    """
+    host = (host or "").strip().rstrip(".").lower()
+    fuzzed = (fuzzed or "").strip().rstrip(".").lower()
+    if not host or not fuzzed:
+        return False
+    if host == fuzzed:
+        return True
+    return "." in fuzzed and host.endswith("." + fuzzed)
+
+
+def _did(name: str, now: bool, prior: bool, done_detail: str, missing_detail: str,
+         when: str) -> Check:
+    """
+    One check, satisfied by this session or by a previous one.
+
+    The satisfied flag is cumulative, which is the point of carrying state;
+    the detail always says which session did the work, so a reader is never
+    told something happened today when it happened last week.
+    """
+    if now:
+        return Check(name, True, done_detail, state="pass")
+    if prior:
+        stamp = f" ({when})" if when else ""
+        return Check(name, True, f"{done_detail} in a previous session{stamp}",
+                     from_prior=True, state="prior")
+    return Check(name, False, missing_detail, state="miss")
 
 
 def _vhost_detail(host: str, fuzzed: set) -> str:
     # This used to read "vhost fuzzing ran" whenever ANY vhost fuzz had run,
     # printed beside a MISS for a host that was never fuzzed. The detail has
     # to describe this host, and on a miss say what was fuzzed instead.
-    matched = sorted(d for d in fuzzed if host in d or d in host)
+    matched = sorted(d for d in fuzzed if vhost_covered(host, d))
     if matched:
         return f"vhost fuzzing ran against {', '.join(matched)}"
     if fuzzed:
@@ -347,4 +595,15 @@ def coverage_summary(checks: list) -> dict:
         "satisfied": done,
         "complete": done == len(checks),
         "missed": [c.name for c in checks if not c.satisfied],
+        # Satisfied by an earlier session rather than this one. Reported
+        # separately so "5/5 complete" cannot quietly mean "this run did
+        # nothing and inherited a pass".
+        "from_prior": [c.name for c in checks if c.satisfied and c.from_prior],
+        # Ran but produced no usable evidence. A bare miss means "never done";
+        # these mean "attempted and came back empty, blocked or cut short",
+        # which needs a different response - check the box is up, not do the
+        # step you already did.
+        "empty": [c.name for c in checks if c.state == "empty"],
+        "blocked": [c.name for c in checks if c.state == "blocked"],
+        "partial": [c.name for c in checks if c.state == "partial"],
     }

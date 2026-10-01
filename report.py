@@ -80,6 +80,7 @@ class SessionReport:
         self._events: list[dict] = []   # ordered timeline for the HTML render
         self._summary: dict | None = None
         self._coverage: dict | None = None
+        self._state: dict | None = None
         self._incomplete: str | None = None
         self._telemetry: dict | None = None
 
@@ -196,6 +197,28 @@ class SessionReport:
                     )
                 f.write("\n")
 
+    def log_state(self, previous: dict | None, delta_lines: list, snapshot: str = ""):
+        """
+        What changed since the last session against this target.
+
+        Written near the top of the report because on a rerun it is the
+        finding: the ports and paths below were mostly known already, and the
+        reason to run again is what is different.
+        """
+        self._state = {"previous": previous, "delta": delta_lines, "snapshot": snapshot}
+        with open(self.path, "a", encoding="utf-8") as f:
+            f.write("## Change since last session\n\n")
+            if previous:
+                f.write(
+                    f"Compared against the session of **{previous.get('timestamp')}** "
+                    f"(`{previous.get('source', 'unknown')}`).\n\n"
+                )
+            for line in delta_lines:
+                f.write(f"- {line}\n")
+            if snapshot:
+                f.write(f"\nThis session was recorded as `{snapshot}`.\n")
+            f.write("\n")
+
     def log_coverage(self, surface: dict, checks: list, summary: dict):
         """
         Record the methodology coverage table. This is the deterministic
@@ -210,9 +233,26 @@ class SessionReport:
                 + ("." if summary["complete"] else " - **incomplete**.")
                 + "\n\n"
             )
+            if summary.get("from_prior"):
+                f.write(
+                    f"{len(summary['from_prior'])} of those were satisfied by an "
+                    f"earlier session against this target, not by this run.\n\n"
+                )
+            if summary.get("blocked") or summary.get("empty") or summary.get("partial"):
+                attempted = (summary.get("blocked", []) + summary.get("empty", [])
+                             + summary.get("partial", []))
+                f.write(
+                    f"{len(attempted)} check(s) ran but returned nothing usable "
+                    f"(blocked, empty or cut short). These are different from a step "
+                    f"never attempted: confirm the target is reachable rather than "
+                    f"re-running the same scan.\n\n"
+                )
             f.write("| | Check | Detail |\n|---|---|---|\n")
             for c in checks:
-                mark = "PASS" if c.satisfied else "MISS"
+                mark = {"pass": "PASS", "prior": "PRIOR", "miss": "MISS",
+                        "empty": "EMPTY", "blocked": "BLOCKED",
+                        "partial": "PARTIAL"}.get(getattr(c, "state", None),
+                                                  "PASS" if c.satisfied else "MISS")
                 f.write(f"| {mark} | {c.name} | {c.detail} |\n")
             f.write("\n### Attack surface discovered\n\n")
             f.write(f"- Open ports: {surface.get('open_ports') or 'none'}\n")
@@ -383,6 +423,26 @@ class SessionReport:
                 parts.append("</tbody></table>")
             parts.append("</section>")
 
+        if self._state:
+            st = self._state
+            prev = st.get("previous")
+            parts.append("<section class='summary'><h2>Change since last session</h2>")
+            if prev:
+                parts.append(
+                    f"<p>Compared against the session of "
+                    f"<strong>{e(str(prev.get('timestamp')))}</strong> "
+                    f"({e(str(prev.get('source', 'unknown')))}).</p>"
+                )
+            parts.append("<ul>")
+            for line in st.get("delta") or []:
+                parts.append(f"<li>{e(str(line))}</li>")
+            parts.append("</ul>")
+            if st.get("snapshot"):
+                parts.append(
+                    f"<p>This session was recorded as {e(str(st['snapshot']))}.</p>"
+                )
+            parts.append("</section>")
+
         if self._coverage:
             cov = self._coverage
             sm = cov["summary"]
@@ -390,14 +450,26 @@ class SessionReport:
             parts.append("<section class='summary'><h2>Methodology coverage</h2>")
             parts.append(
                 f"<p class='cov-{cls}'>{sm['satisfied']} of {sm['total']} checks satisfied"
-                + ("." if sm["complete"] else " &mdash; incomplete.")
+                + ("." if sm["complete"] else " - incomplete.")
                 + "</p>"
             )
             parts.append("<table><thead><tr><th></th><th>Check</th><th>Detail</th>"
                          "</tr></thead><tbody>")
+            if sm.get("from_prior"):
+                parts.append(
+                    f"<p>{len(sm['from_prior'])} of those were satisfied by an earlier "
+                    f"session against this target, not by this run.</p>"
+                )
+            # pass -> green, prior -> grey, miss -> red, and the three
+            # "ran but nothing usable" states -> amber (sev-medium).
+            badge_for = {
+                "pass": ("sev-low", "pass"), "prior": ("sev-info", "prior"),
+                "miss": ("sev-high", "miss"), "empty": ("sev-medium", "empty"),
+                "blocked": ("sev-medium", "blocked"), "partial": ("sev-medium", "partial"),
+            }
             for c in cov["checks"]:
-                badge = "sev-low" if c.satisfied else "sev-high"
-                label = "pass" if c.satisfied else "miss"
+                state = getattr(c, "state", None) or ("pass" if c.satisfied else "miss")
+                badge, label = badge_for.get(state, ("sev-high", "miss"))
                 parts.append(
                     f"<tr><td><span class='sev {badge}'>{label}</span></td>"
                     f"<td>{e(str(c.name))}</td><td>{e(str(c.detail))}</td></tr>"

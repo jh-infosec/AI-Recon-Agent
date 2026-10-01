@@ -8,3 +8,8 @@ reports/*.html
 .ruff_cache/
 .pytest_cache/
 config/targets.yaml
+# Ignore the contents, keep the folder's README. `state/` alone would stop
+# git descending into the directory at all, so the negation below would
+# never be reached.
+state/*
+!state/README.md

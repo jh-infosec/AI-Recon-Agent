@@ -57,11 +57,17 @@ class CallLog:
 
     def __init__(self):
         self._seen: dict = {}
+        self._calls: list = []
 
     def record(self, tool_name: str, tool_input: dict, result: dict):
         key = call_key(tool_name, tool_input)
         if key not in self._seen:
             self._seen[key] = self._describe(result)
+        # Kept separately from the dedup key because state needs the tool name
+        # and its arguments back as structured data, and the key is a string.
+        entry = {"tool": tool_name, "input": dict(tool_input or {})}
+        if entry not in self._calls:
+            self._calls.append(entry)
 
     def is_repeat(self, tool_name: str, tool_input: dict) -> bool:
         if tool_name not in DEDUPED_TOOLS:
@@ -70,6 +76,10 @@ class CallLog:
 
     def previous(self, tool_name: str, tool_input: dict) -> str:
         return self._seen.get(call_key(tool_name, tool_input), "")
+
+    def entries(self) -> list:
+        """Every distinct call made this session, for the state snapshot."""
+        return list(self._calls)
 
     @staticmethod
     def _describe(result: dict) -> str:

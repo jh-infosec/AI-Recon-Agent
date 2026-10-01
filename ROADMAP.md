@@ -87,14 +87,26 @@ Both were found by comparing a live run against the box's real attack path,
 not by planning. They took the release slot originally held by state across
 runs, which moves to v0.6.0.
 
-## v0.6.0 - state across runs
+## v0.6.0 - state across runs (shipped)
 
-- `state/<target>.json` carrying discovered surface and tool calls made.
+- `state/<target>/<timestamp>.json` carrying discovered surface and tool calls
+  made. A directory of timestamped snapshots rather than one file, so the
+  history of a box is kept rather than overwritten.
 - Kickoff summarises prior state instead of starting cold.
 - A rerun reports change rather than rediscovering.
-- Coverage becomes cumulative across sessions.
+- Coverage is cumulative across sessions, and a check satisfied by an earlier
+  run is labelled PRIOR rather than PASS.
 
-## v0.6.1 - playbooks
+## v0.6.1 - evidence-aware coverage (shipped)
+
+- A fingerprint or content-enumeration check passes only when the tool
+  produced usable evidence, not merely because it was invoked.
+- A scan that ran but came back blocked, empty or cut short is a stated gap
+  (EMPTY / BLOCKED / PARTIAL) distinct from a step never attempted.
+- Per-port outcomes are carried across sessions, so a prior failure does not
+  launder into a pass.
+
+## v0.6.2 - playbooks
 
 - Phase definitions as markdown under `playbooks/`, loaded on demand.
 - Knowledge injection scoped by `lookup()` against current findings rather
