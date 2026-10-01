@@ -144,6 +144,37 @@ def is_content_web_service(port: int, service: str, product: str) -> tuple:
 _OUTCOME_RANK = {"blocked": 0, "empty": 1, "partial": 2, "ok": 3}
 
 
+def _status_rank(status: int) -> int:
+    """
+    How good a fetch response is as evidence that a site has content.
+
+    Any status proves the server answered, but they are not equal proof. A 2xx
+    means we actually saw a page; a 404 only means the server was there to say
+    no. The first live run fetched / (200) and then /robots.txt (404), and
+    last-write-wins left the 404 on record, so the report cited a 404 as its
+    evidence the service was up.
+    """
+    if 200 <= status < 300:
+        return 4
+    if 300 <= status < 400:
+        return 3
+    if status in (401, 403):
+        return 2
+    if 400 <= status < 500:
+        return 1
+    return 0
+
+
+def served_content(status: int | None) -> bool:
+    """
+    True when a fetch actually returned a page.
+
+    This is the bar for calling an empty scan corroborated: to say a site has
+    nothing more to find, something has to have seen the site.
+    """
+    return isinstance(status, int) and 200 <= status < 300
+
+
 def _enum_outcome(parsed: dict, result: dict) -> str:
     parsed, result = parsed or {}, result or {}
     if parsed.get("parse_error") or parsed.get("parse_warning"):
@@ -288,7 +319,10 @@ class AttackSurface:
         elif tool_name == "fetch_page":
             status = parsed.get("status")
             if isinstance(status, int) and status > 0:
-                self.responded[int(tool_input.get("port", 80))] = status
+                port = int(tool_input.get("port", 80))
+                best = self.responded.get(port)
+                if best is None or _status_rank(status) > _status_rank(best):
+                    self.responded[port] = status
 
         elif tool_name == "searchsploit_lookup":
             q = (tool_input.get("query") or "").strip()
@@ -430,20 +464,36 @@ def _evidence_check(name: str, now_outcome: str | None, prior_outcome: str | Non
     gap = {
         "partial": "the scan timed out partway; MISSING IS NOT ABSENT, so this "
                    "is not a finished enumeration",
+        # Reached only when nothing fetched a page from this port: the
+        # corroborated case returns a pass above.
         "empty": (
-            f"the scan ran but found nothing; a page fetch on this port "
-            f"returned HTTP {responded}, so the service is confirmed up and "
-            f"the empty result is most likely genuine - a stock or single-page "
-            f"site with nothing else to find"
+            f"the scan ran but found nothing, and the only fetch of this port "
+            f"returned HTTP {responded}, which shows the server answered but "
+            f"not that it serves content - fetch / before trusting the blank"
         ) if responded else (
             "the scan ran but found nothing, which on a live service is "
-            "unusual - check the target is up rather than trusting the blank"
+            "unusual - fetch / to check the target is up rather than trusting "
+            "the blank"
         ),
         "blocked": "the scan produced no readable result (blocked, timed out, or "
                    "errored); it did not really run",
     }
     if now_outcome == "ok":
         return Check(name, True, ok, state="pass")
+    # An empty scan against a service something actually fetched a page from is
+    # a finished piece of work, not an open gap: the site was seen and it has
+    # nothing more to find. Left as a gap it made a correct session exit 3 and
+    # could never be satisfied on a stock single-page site, and a gate that
+    # flags correct work teaches you to ignore it. v0.5.11 cleared the same
+    # shape of defect when a hostname check could never be satisfied.
+    if now_outcome == "empty" and served_content(responded):
+        return Check(
+            name, True,
+            f"the scan found nothing, and a page fetch on this port returned "
+            f"HTTP {responded}, so the site was reached and genuinely has no "
+            f"further content to find",
+            state="pass",
+        )
     if prior_outcome == "ok":
         stamp = f" ({when})" if when else ""
         return Check(name, True, f"{ok} in a previous session{stamp}",

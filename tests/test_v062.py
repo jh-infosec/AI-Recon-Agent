@@ -200,11 +200,13 @@ def test_empty_advice_uses_the_fetch_that_already_happened():
     """
     The live run told the operator to "check the target is up" in the same
     session that had just fetched a 200 from that port.
+
+    v0.6.3 went further and made this case a pass: see
+    test_v063.py::test_a_corroborated_empty_scan_passes for why.
     """
     chk = next(c for c in coverage(_iis_surface(True))
                if c.name.endswith("content-enumerated"))
-    assert chk.state == "empty"
-    assert "HTTP 200" in chk.detail and "confirmed up" in chk.detail
+    assert "HTTP 200" in chk.detail
     assert "check the target is up" not in chk.detail
 
 
@@ -215,6 +217,9 @@ def test_empty_advice_is_unchanged_when_nothing_confirmed_the_service():
     assert "check the target is up" in chk.detail
 
 
-def test_an_empty_enumeration_is_still_a_gap_either_way():
-    for with_fetch in (True, False):
-        assert coverage_summary(coverage(_iis_surface(with_fetch)))["complete"] is False
+def test_an_uncorroborated_empty_enumeration_is_a_gap():
+    """
+    Superseded in part by v0.6.3: an empty scan is still a gap when nothing
+    fetched a page from the port, but passes when something did.
+    """
+    assert coverage_summary(coverage(_iis_surface(False)))["complete"] is False

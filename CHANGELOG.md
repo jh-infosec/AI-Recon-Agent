@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.3] - 2026-10-01
+
+From the second run against the same domain controller, which confirmed every v0.6.2 fix and then exposed three more things. The zone transfer read `refused`, the unreachable reverse lookup was reported, the duplicate hostname was gone, and one vhost fuzz of the parent domain satisfied both hostname checks. Then the session did everything right and exited 3.
+
+Changed: **An empty enumeration now passes when something actually fetched a page from that port.** That session re-scanned rather than trusting stored state, finished the previous run's unfinished work, fuzzed vhosts, found nothing on the web port, and then fetched `/` and `/robots.txt` to prove the service was alive before concluding the blank was genuine. It was marked incomplete anyway. A stock single-page site could never satisfy the gate no matter how well the session was run, and a gate that flags correct work teaches you to ignore it, which costs exactly the case it exists to catch. v0.5.11 cleared the same shape when an IP address became a hostname and produced a vhost check nothing could satisfy.
+
+An empty scan stays a gap when nothing fetched a page. The bar is whether the site was seen, not merely whether the server answered: a 404 proves something was there to say no, which is why a 404-only session is still a gap.
+
+Fixed: **The strongest fetch evidence is kept, not the last one.** The live run fetched `/` (200) and then `/robots.txt` (404), and the record was last-write-wins, so the report cited a 404 as its proof the service was up. Statuses are ranked now and the best is kept.
+
+Fixed: **The summary line contradicted the checks above it.** It told the operator to "confirm the target is up" on the same screen as a check reporting the target confirmed up. One piece of advice was being given for three different situations. It now names only what is actually outstanding, and says what is wrong with each: blocked, cut short, or empty with nothing confirming the service serves content.
+
+Tests: 24 new (589 total), verified against v0.6.2.
+
 ## [0.6.2] - 2026-10-01
 
 From the first run against a live Windows domain controller (TryHackMe Attacktive Directory). It produced a confidently false headline finding, which is a worse failure than any defect cleared so far: the gobuster bug lost findings, this one invented one.

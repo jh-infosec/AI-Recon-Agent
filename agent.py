@@ -662,14 +662,18 @@ def main():
             f"{len(summary['from_prior'])} check(s) were satisfied by an earlier "
             f"session, not by this run"))
     # A step that ran but produced nothing usable needs a different response
-    # from one that never ran: check the box is reachable, do not just redo the
-    # scan. Call these out so they are not lost among the misses.
-    attempted_gaps = summary.get("blocked", []) + summary.get("empty", []) + summary.get("partial", [])
-    if attempted_gaps:
-        print(console.warn(
-            f"{len(attempted_gaps)} step(s) ran but returned nothing usable "
-            f"(blocked, empty or cut short) - confirm the target is up rather "
-            f"than re-running the same scan"))
+    # from one that never ran. Each kind needs a DIFFERENT response, though,
+    # and this line used to give one piece of advice for all three: it told the
+    # operator to confirm the target was up immediately after a check had
+    # reported the target confirmed up. Say only what is actually outstanding.
+    advice = [
+        (summary.get("blocked", []), "produced no readable result (blocked, timed out or errored)"),
+        (summary.get("partial", []), "was cut short, so missing does not mean absent"),
+        (summary.get("empty", []), "came back empty with nothing confirming the service serves content"),
+    ]
+    for names, phrase in advice:
+        if names:
+            print(console.warn(f"{len(names)} step(s) {phrase}: {', '.join(names)}"))
 
     print("\n" + console.agent("agent", console.c("Change since last session:",
                                                   console.BRIGHT_WHITE, console.BOLD)))

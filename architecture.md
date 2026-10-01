@@ -303,6 +303,31 @@ This is also the most expensive kind of defect this project has had. A parser
 that drops findings costs you a rerun. A parser that invents one costs you the
 report, because everything downstream reasons from it and sounds right.
 
+### A gate that flags correct work is a broken gate
+
+The coverage gate exists to catch a session that declared itself finished
+before it was. The second live run against a domain controller did the
+opposite: it re-scanned rather than trusting stored state, finished the
+previous session's outstanding work, found nothing on the web port, and then
+fetched `/` and `/robots.txt` to establish that the blank was real and not a
+dead target. It was marked incomplete.
+
+Nothing that session could have done would have changed that. The box serves a
+stock IIS page, so a directory scan will always come back empty, so the check
+could never be satisfied. v0.5.11 cleared the identical shape when an IP
+address was recorded as a hostname and produced a vhost-fuzzing obligation
+that no amount of fuzzing could meet.
+
+An unsatisfiable check is worse than a missing one. It is noise that arrives
+every run, and the operator learns to read exit 3 as "the usual", which is
+precisely the state in which a real gap goes unnoticed. So an empty scan
+corroborated by a successful fetch is finished work and passes.
+
+The bar for corroboration is that the site was SEEN, not that the server
+answered. A 404 proves something was there to say no; it says nothing about
+whether the site has content. Only a 2xx supports the claim "there is nothing
+more here to find".
+
 ### The model reasons; it does not decide what is true
 
 Tools produce observations. The model orders them, explains them and decides
@@ -831,6 +856,19 @@ fetched HTTP 200 from that port. `fetch_page` was never ingested into the
 surface, so the gate could not see what the session had proved. Ports that
 answered a fetch are recorded now. The same shape as v0.6.1's parse-warning
 defect: the evidence existed and the thing that needed it never received it.
+
+Fixed in v0.6.3, from the second run against the same domain controller.
+
+**The last fetch overwrote the best one.** The surface recorded one response
+status per port and took whichever arrived last, so fetching `/` (200) and then
+`/robots.txt` (404) left the 404 on record, and the report offered a 404 as its
+evidence that the service was up. Statuses are ranked and the strongest kept.
+
+**The summary contradicted the checks it was summarising.** One warning line
+covered blocked, cut-short and empty results and gave a single piece of advice
+for all three, so it told the operator to confirm the target was up directly
+below a check stating the target was confirmed up. It now reports each kind
+separately and names what is outstanding.
 
 ## Accepted Designs
 
