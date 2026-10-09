@@ -122,7 +122,14 @@ runs, which moves to v0.6.0.
 - Coverage checks for SMB and LDAP; a refusal satisfies them, because a
   hardened target has answered the question.
 
-## v0.7.1 - smarter recon
+## v0.7.1 - AD tools, first live run (shipped)
+
+- The gate no longer passes an LDAP check on a rootDSE read alone.
+- The model and the console are told what an accepted null session and an
+  unsent search actually mean.
+- SMB and LDAP outcomes survive a real save and load.
+
+## v0.7.2 - smarter recon
 
 - Target-aware wordlist generation from fingerprint output, subject to the
   v0.3.1 path rules for anything written to disk.

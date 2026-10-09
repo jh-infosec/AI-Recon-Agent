@@ -23,6 +23,8 @@ let the model try once more, rather than failing the session outright. The
 analysis usually exists; it is in the wrong place.
 """
 
+import re
+
 MIN_SUMMARY_CHARS = 80
 
 
@@ -113,6 +115,27 @@ def retry_message(tool_name: str, reason: str) -> str:
     )
 
 
+_LONG_DASH = re.compile("[ \t]*[\u2014\u2015][ \t]*")
+_SHORT_DASH = re.compile("[\u2012\u2013]")
+
+
+def plain_dashes(text: str) -> str:
+    """
+    Replace long dashes in MODEL-WRITTEN prose with hyphens.
+
+    The project bans them from everything it generates, and tests/test_style.py
+    enforces that on the source. But the source was never where the live
+    sessions' dashes came from: the model writes them into its narration and
+    summaries, and those went to the terminal and both reports verbatim.
+
+    Applied to the model's own words only. Raw tool output is evidence and is
+    never rewritten, whatever characters it contains.
+    """
+    if not isinstance(text, str):
+        return text
+    return _SHORT_DASH.sub("-", _LONG_DASH.sub(" - ", text))
+
+
 def normalise_text(value):
     """
     Repair literal escape sequences in model-supplied text.
@@ -133,7 +156,7 @@ def normalise_text(value):
     backslash sequence should survive into the report exactly as it was.
     """
     if isinstance(value, str):
-        return (
+        return plain_dashes(
             value.replace("\\r\\n", "\n")
             .replace("\\n", "\n")
             .replace("\\t", "\t")

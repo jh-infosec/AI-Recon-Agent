@@ -270,7 +270,95 @@ def compact_for_model(tool_name: str, parsed: dict, budget: int = MODEL_PAYLOAD_
             view["result"] = parsed["parse_warning"]
         return view
 
+    if tool_name == "run_smb_enum":
+        return _smb_view(parsed)
+    if tool_name == "run_ldap_enum":
+        return _ldap_view(parsed)
+
     return parsed
+
+
+def _smb_view(parsed: dict) -> dict:
+    """
+    What the model sees of an anonymous SMB run.
+
+    v0.7.0 passed the parser's dict through untouched, and the live model read
+    `anonymous_login: true` as a weakness: "the anonymous SMB door is cracked
+    ... modern hardened DCs typically reject this outright". smbclient prints
+    "Anonymous login successful" when the null SESSION SETUP succeeds; what
+    that session may read is a separate control, and on that box it read
+    nothing. The field is renamed here and the outcome stated in words, the
+    same fix v0.6.2 made for the zone transfer.
+    """
+    view = {
+        "session_setup_accepted": bool(parsed.get("anonymous_login")),
+        "shares": parsed.get("shares", [])[:100],
+        "users": parsed.get("users", [])[:100],
+        "groups": parsed.get("groups", [])[:100],
+        "denied": parsed.get("denied", []),
+        "unreachable": parsed.get("unreachable", []),
+        "listing_restricted": bool(parsed.get("listing_restricted")),
+    }
+    got_data = view["shares"] or view["users"] or view["groups"]
+    if not got_data and (view["listing_restricted"] or view["denied"]):
+        view["result"] = (
+            "Anonymous enumeration was REFUSED. The server accepted a null "
+            "session setup and then returned nothing: the share table was empty "
+            "and the domain queries were denied. An accepted session setup with "
+            "nothing readable behind it is the expected behaviour of a "
+            "restricted Windows host, not a partial weakness. Do not report "
+            "the anonymous login itself as a finding."
+        )
+    elif got_data:
+        view["result"] = (
+            "Anonymous enumeration RETURNED DATA. Every share, user and group "
+            "listed here was readable without credentials."
+        )
+    return view
+
+
+def _ldap_view(parsed: dict) -> dict:
+    """What the model sees of an anonymous LDAP run, with the outcome in words."""
+    root = parsed.get("root_dse") or {}
+    view = {
+        "default_naming_context": (root.get("defaultNamingContext") or [""])[0],
+        "dns_host_name": parsed.get("dns_host_name", ""),
+        "naming_contexts": parsed.get("naming_contexts", [])[:20],
+        "searched": bool(parsed.get("searched")),
+        "bind_required": parsed.get("bind_required", []),
+        "entries": parsed.get("entries", [])[:50],
+        "hostnames": parsed.get("hostnames", [])[:20],
+    }
+    # Target-supplied text about to be quoted inside an instruction, so it is
+    # only quoted if it is shaped like a DN; anything else is dropped.
+    try:
+        from safety import validate_ldap_base_dn
+        view["default_naming_context"] = (
+            validate_ldap_base_dn(view["default_naming_context"])
+            if view["default_naming_context"] else "")
+    except Exception:  # noqa: BLE001
+        view["default_naming_context"] = ""
+    if not view["searched"]:
+        # The live model said "an anonymous search under the default naming
+        # context returned zero entries" after a call that never searched.
+        dn = view["default_naming_context"]
+        view["result"] = (
+            "Only the rootDSE was read. NO directory search was sent, so this "
+            "says nothing about whether anonymous search is allowed. To test "
+            "it, call run_ldap_enum again with base_dn set to "
+            + (f"'{dn}'." if dn else "the defaultNamingContext.")
+        )
+    elif view["bind_required"] and not view["entries"]:
+        view["result"] = (
+            "The directory searches were REFUSED: the server requires a bind. "
+            "Zero entries is the refusal, not an empty directory."
+        )
+    elif view["entries"]:
+        view["result"] = (
+            "The directory ANSWERED an anonymous search. Every entry listed "
+            "here was readable without credentials."
+        )
+    return view
 
 
 def parse_ffuf_json(json_text: str) -> dict:
@@ -1069,6 +1157,7 @@ _RPC_ENTRY = re.compile(r"^(?P<kind>user|group):\[(?P<name>[^\]]*)\]\s*rid:\[(?P
 # domains but nothing is served under them, so turning them into hostnames
 # would raise a vhost-fuzzing obligation no session could ever satisfy - the
 # defect v0.5.11 cleared when an IP address became a hostname.
+_LDAP_SEARCH_LABELS = {"users", "computers"}
 _AD_PARTITIONS = {"domaindnszones", "forestdnszones"}
 _LDAP_BIND_REQUIRED = re.compile(
     r"successful bind must be completed|LdapErr:.*DSID|Operations error", re.IGNORECASE)
@@ -1176,14 +1265,21 @@ def parse_ldap_enum(text: str) -> dict:
     """
     text = text or ""
     out = {"root_dse": {}, "naming_contexts": [], "dns_host_name": "",
-           "entries": [], "bind_required": [], "hostnames": []}
+           "entries": [], "bind_required": [], "hostnames": [], "searched": False}
     if not text.strip():
         return {**out, "parse_error": "empty ldap output"}
 
     for label, raw in _section_bodies(text):
         body = _strip_wrapper(raw)
         label = label or "ldap"
+        # Whether a directory search was sent at all. Without this a call that
+        # only read the rootDSE and a search that came back empty look the
+        # same, and the live run's model told the operator "an anonymous
+        # search returned zero entries" about a search that never happened.
+        if label.lower() in _LDAP_SEARCH_LABELS:
+            out["searched"] = True
         if _LDAP_BIND_REQUIRED.search(body):
+            out["searched"] = True
             out["bind_required"].append(label)
             continue
         attrs = {}
@@ -1199,6 +1295,7 @@ def parse_ldap_enum(text: str) -> dict:
                 out["root_dse"].setdefault(key, []).extend(values)
         else:
             out["entries"].append(attrs)
+            out["searched"] = True
 
     out["naming_contexts"] = list(dict.fromkeys(out["root_dse"].get("namingContexts", [])))
     host = (out["root_dse"].get("dnsHostName") or [""])[0]

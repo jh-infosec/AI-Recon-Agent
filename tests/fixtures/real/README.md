@@ -112,6 +112,9 @@ that reads as an empty result is how a parser invents a finding.
   constructed sample marked INFERRED in `test_v062.py`. The MX and SOA hostname
   tests in `test_regressions_v0511.py` are marked INFERRED for the same reason.
   A box that allows transfers would settle all three.
+- An ffuf hit on dirb `common.txt`'s blank entry (the site root). Seen on the
+  live IIS run as a nameless `[status 200, size 703]` line; `test_v071.py`
+  uses a constructed result marked INFERRED until it is captured.
 - A permissive SMB share listing and a successful rpcclient user enumeration.
   This DC denied both, so the success-path row formats in `parse_smb_enum` come
   from smbclient's and rpcclient's documented output and the tests covering

@@ -907,6 +907,32 @@ for all three, so it told the operator to confirm the target was up directly
 below a check stating the target was confirmed up. It now reports each kind
 separately and names what is outstanding.
 
+Fixed in v0.7.1, from the first live session with the AD tools.
+
+**A step nobody took passed as a refusal.** A rootDSE-only LDAP call sends no
+search, and the gate scored it "the target refused anonymous enumeration".
+Completion bias inside the gate, not the model: the check asked whether a call
+had happened rather than whether the question had been put. Whether a search
+was sent is now recorded, and only a search that was sent can be refused.
+
+**A field name told the model the opposite of the result.** `anonymous_login:
+true` reached the model raw and came back as a reported weakness on a host that
+listed nothing. The third time this project has fixed the same shape (the zone
+transfer in v0.6.2, the format warning in v0.6.1): a view of a result is a
+claim about it, so outcomes go to the model in words, not in field names.
+
+**A state field was written and never read.** SMB and LDAP outcomes went into
+every snapshot and were dropped on load. The test that should have caught it
+seeded the surface with a hand-built dict. A persistence test that skips the
+save and the load tests nothing about persistence.
+
+**The site root counted as a find.** A fuzz hit on the wordlist's blank entry
+is a fetch of `/`. It now corroborates the site rather than counting as content.
+
+**Model prose escaped the style rule.** The style test checks files; the
+model's narration never becomes one. It is normalised at the point it is
+printed and logged.
+
 ## Accepted Designs
 
 Decided, not yet built. Recorded so the implementation has something to be

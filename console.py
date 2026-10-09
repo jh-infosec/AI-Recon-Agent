@@ -266,6 +266,10 @@ def highlights(tool_name: str, parsed: dict) -> list:
             # is a directory, /admin -> /login.php is a wall. gobuster has
             # supplied it since v0.5.8 and ffuf all along; nothing showed it.
             target = f" -> {r['redirect']}" if r.get("redirect") else ""
+            if isinstance(name, str) and not name.strip().strip("/"):
+                # dirb's common.txt has a blank entry, which requests the site
+                # root; it printed as a nameless line on the live run.
+                name = "/ (site root)"
             rows.append((
                 _path_rank(status),
                 f"{name}  [status {status}"
@@ -333,6 +337,34 @@ def highlights(tool_name: str, parsed: dict) -> list:
             out.append(f"!query did not reach the server: {label}")
         for name in parsed.get("hostnames", [])[:10]:
             out.append(f"hostname: {name}")
+
+    elif tool_name == "run_smb_enum":
+        # v0.7.0 had no branch here, so both AD tools printed a bare command
+        # line and the operator could not tell a refusal from a crash.
+        got = parsed.get("shares") or parsed.get("users") or parsed.get("groups")
+        for sh in parsed.get("shares", [])[:10]:
+            out.append(f"share: {sh.get('name')} ({sh.get('type')})")
+        for u in parsed.get("users", [])[:10]:
+            out.append(f"user: {u.get('name')}")
+        if not got and (parsed.get("listing_restricted") or parsed.get("denied")):
+            # Plain, because "Anonymous login successful" in the raw output
+            # reads as the opposite.
+            out.append("anonymous enumeration refused (null session accepted, nothing readable)")
+        for label in parsed.get("unreachable") or []:
+            out.append(f"!did not reach the server: {label}")
+
+    elif tool_name == "run_ldap_enum":
+        if parsed.get("dns_host_name"):
+            out.append(f"domain controller: {parsed['dns_host_name']}")
+        dn = (parsed.get("root_dse") or {}).get("defaultNamingContext") or []
+        if dn:
+            out.append(f"defaultNamingContext: {dn[0]}")
+        if parsed.get("entries"):
+            out.append(f"anonymous search returned {len(parsed['entries'])} entries")
+        elif parsed.get("bind_required"):
+            out.append("anonymous search refused (bind required)")
+        elif not parsed.get("searched"):
+            out.append("rootDSE only - no directory search sent")
 
     # A scan that found nothing prints nothing, so the operator sees a bare
     # tool call and cannot tell it apart from a crash. The model already gets

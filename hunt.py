@@ -310,8 +310,11 @@ def main():
 
         for block in response.content:
             if block.type == "text" and block.text.strip():
-                print(f"\n{console.c('[claude]', console.BLUE, console.BOLD)} {block.text.strip()}\n")
-                report.log_analysis(block.text)
+                # The model's own prose, so the house style applies to it; the
+                # conversation history keeps what it actually wrote.
+                prose = completeness.plain_dashes(block.text)
+                print(f"\n{console.c('[claude]', console.BLUE, console.BOLD)} {prose.strip()}\n")
+                report.log_analysis(prose)
                 assistant_content.append({"type": "text", "text": block.text})
 
             elif block.type == "tool_use":

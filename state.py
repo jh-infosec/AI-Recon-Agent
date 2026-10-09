@@ -321,6 +321,15 @@ def normalise(raw: dict) -> dict:
 
 
 _OUTCOMES = {"ok", "empty", "blocked", "partial"}
+# Closed set, checked on read like every other stored value. v0.7.0 wrote these
+# into the snapshot and never read them back, so the PRIOR path for SMB and
+# LDAP could not fire: its test seeded the surface with a hand-built dict and
+# never went through a save and a load.
+_AD_OUTCOMES = {"ok", "restricted", "rootdse_only", "denied"}
+
+
+def _ad_outcome(raw) -> str:
+    return raw if isinstance(raw, str) and raw in _AD_OUTCOMES else ""
 
 
 def _outcome_map(raw) -> dict:
@@ -349,7 +358,9 @@ def _actions(tool_calls, surface=None) -> dict:
     surface = surface if isinstance(surface, dict) else {}
     out = {"fingerprinted": [], "enumerated": [], "vhost_fuzzed": [], "dns_enumerated": False,
            "enum_outcome": _outcome_map(surface.get("enum_outcome")),
-           "fingerprint_outcome": _outcome_map(surface.get("fingerprint_outcome"))}
+           "fingerprint_outcome": _outcome_map(surface.get("fingerprint_outcome")),
+           "smb_outcome": _ad_outcome(surface.get("smb_outcome")),
+           "ldap_outcome": _ad_outcome(surface.get("ldap_outcome"))}
     if not isinstance(tool_calls, list):
         return out
     for call in tool_calls[:MAX_LIST]:

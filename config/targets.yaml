@@ -22,13 +22,13 @@
 # =============================================================================
 
 authorized_targets: 
-   - host: 10.114.148.80
+   - host: 10.112.180.141
      platform: THM
      note: "Attacktive Directory - AD DC recon"
 
 
 # Example (uncomment and edit for your own session):
 # authorized_targets:
-#   - host: 10.113.166.2
+#   - host: 10.112.180.141
 #     platform: htb
 #     note: "HTB machine 'Example' - spawned on my own VPN, 2026-08-13"

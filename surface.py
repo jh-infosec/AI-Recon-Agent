@@ -29,6 +29,7 @@ import re
 from dataclasses import dataclass, field
 
 from parsers import is_vhost_candidate
+from safety import validate_ldap_base_dn
 
 # Services that mean "there is a web server here" once nmap has identified
 # them. `tunnel="ssl"` on an http service is how nmap reports HTTPS.
@@ -143,6 +144,34 @@ def is_content_web_service(port: int, service: str, product: str) -> tuple:
 # that still returned some results.
 _OUTCOME_RANK = {"blocked": 0, "empty": 1, "partial": 2, "ok": 3}
 
+# Anonymous AD outcomes, best first. "rootdse_only" sits above "denied"
+# because something was read, and below "restricted" because the question the
+# check asks (will the directory answer an anonymous search?) was never put.
+AD_OUTCOMES = ("ok", "restricted", "rootdse_only", "denied")
+_AD_RANK = {name: len(AD_OUTCOMES) - i for i, name in enumerate(AD_OUTCOMES)}
+
+
+def best_ad_outcome(*outcomes: str) -> str:
+    """The strongest of several AD outcomes; unknown values count for nothing."""
+    known = [o for o in outcomes if o in _AD_RANK]
+    return max(known, key=_AD_RANK.__getitem__) if known else ""
+
+
+def is_root_hit(r) -> bool:
+    """
+    A fuzz result for the site root itself.
+
+    dirb's common.txt carries a blank entry, so ffuf requests the bare URL and
+    reports it. On the live IIS box that was the ONLY result - the 703-byte
+    default page - and it counted as "the tool returned usable results". It is
+    proof the site answered, which is worth having, but it is not content the
+    scan discovered.
+    """
+    if not isinstance(r, dict):
+        return False
+    name = r.get("input") if "input" in r else r.get("path")
+    return isinstance(name, str) and name.strip().strip("/") == ""
+
 
 def _status_rank(status: int) -> int:
     """
@@ -181,9 +210,9 @@ def _enum_outcome(parsed: dict, result: dict) -> str:
         return "blocked"
     if parsed.get("partial"):
         return "partial"
-    if parsed.get("results"):
+    if any(not is_root_hit(r) for r in parsed.get("results") or []):
         return "ok"
-    # No results. A clean finish is "empty"; a timeout or error exit with
+    # No results, or only the site root (see is_root_hit). A clean finish is "empty"; a timeout or error exit with
     # nothing to show is a scan that did not really run.
     if result.get("timed_out") or result.get("returncode"):
         return "blocked"
@@ -217,6 +246,9 @@ class AttackSurface:
     # controller that accepted the null session and then showed nothing.
     smb_outcome: str = ""
     ldap_outcome: str = ""
+    # The defaultNamingContext the rootDSE reported, validated, so a gap that
+    # says "search the directory" can name the base DN to search.
+    ldap_base_dn: str = ""
     # HTTP-speaking ports deliberately NOT treated as web services, with why.
     non_content_http: dict = field(default_factory=dict)
     scanned: bool = False                             # has nmap run at all
@@ -312,6 +344,7 @@ class AttackSurface:
             self.enumerated.add(port)
             self._record_enum_outcome(port, parsed, result)
             self._add_paths(port, parsed)
+            self._note_root_hits(port, parsed)
 
         elif tool_name == "run_ffuf":
             if tool_input.get("mode") == "vhost":
@@ -323,6 +356,7 @@ class AttackSurface:
                 self.enumerated.add(port)
                 self._record_enum_outcome(port, parsed, result)
                 self._add_paths(port, parsed)
+                self._note_root_hits(port, parsed)
 
         elif tool_name == "run_dns_enum":
             self.dns_enumerated = True
@@ -333,21 +367,41 @@ class AttackSurface:
             # this is not a boolean: a server that let us in and listed nothing
             # has refused, it has not reported an absence of shares.
             if parsed.get("shares") or parsed.get("users") or parsed.get("groups"):
-                self.smb_outcome = "ok"
+                new = "ok"
             elif parsed.get("listing_restricted") or parsed.get("denied"):
-                self.smb_outcome = "restricted"
+                new = "restricted"
             else:
-                self.smb_outcome = "denied"
+                new = "denied"
+            # Best wins, as for web enumeration: a second call that fails must
+            # not erase a first one that worked.
+            self.smb_outcome = best_ad_outcome(self.smb_outcome, new)
 
         elif tool_name == "run_ldap_enum":
             if parsed.get("entries"):
-                self.ldap_outcome = "ok"
+                new = "ok"
+            elif parsed.get("bind_required"):
+                new = "restricted"
+            elif parsed.get("root_dse") and not parsed.get("searched"):
+                # The rootDSE answered and no search was ever sent. v0.7.0
+                # called this "restricted" and passed the check with "the
+                # target refused anonymous enumeration" - a refusal nobody had
+                # asked for. A session that stopped after the first call would
+                # have reported a hardened directory it never tested.
+                new = "rootdse_only"
             elif parsed.get("root_dse"):
-                # The rootDSE answered and the searches did not: partial, and
-                # the useful half (the DC name) is already recorded.
-                self.ldap_outcome = "restricted"
+                new = "restricted"
             else:
-                self.ldap_outcome = "denied"
+                new = "denied"
+            self.ldap_outcome = best_ad_outcome(self.ldap_outcome, new)
+            dn = (parsed.get("root_dse") or {}).get("defaultNamingContext") or [""]
+            dn = dn[0] if isinstance(dn, list) and dn else ""
+            if dn and not self.ldap_base_dn:
+                try:
+                    self.ldap_base_dn = validate_ldap_base_dn(dn)
+                except Exception:  # noqa: BLE001
+                    # Target-supplied text that is not a DN is not repeated
+                    # into the report as an instruction to search it.
+                    pass
             self._add_hostnames(parsed)
 
         elif tool_name == "fetch_page":
@@ -390,8 +444,8 @@ class AttackSurface:
             if isinstance(d, str) and is_vhost_candidate(d)
         }
         self.prior_dns_enumerated = bool(actions.get("dns_enumerated"))
-        self.prior_smb_outcome = str(actions.get("smb_outcome") or "")
-        self.prior_ldap_outcome = str(actions.get("ldap_outcome") or "")
+        self.prior_smb_outcome = best_ad_outcome(str(actions.get("smb_outcome") or ""))
+        self.prior_ldap_outcome = best_ad_outcome(str(actions.get("ldap_outcome") or ""))
         for port, outcome in (actions.get("enum_outcome") or {}).items():
             self.prior_enum_outcome[int(port)] = outcome
         for port, outcome in (actions.get("fingerprint_outcome") or {}).items():
@@ -406,6 +460,17 @@ class AttackSurface:
         current = self.enum_outcome.get(port)
         if current is None or _OUTCOME_RANK[new] > _OUTCOME_RANK[current]:
             self.enum_outcome[port] = new
+
+    def _note_root_hits(self, port: int, parsed: dict) -> None:
+        """A fuzz hit on the site root is a fetch of /, so record it as one."""
+        if parsed.get("parse_warning"):
+            return
+        for r in parsed.get("results") or []:
+            status = r.get("status") if is_root_hit(r) else None
+            if isinstance(status, int) and status > 0:
+                best = self.responded.get(port)
+                if best is None or _status_rank(status) > _status_rank(best):
+                    self.responded[port] = status
 
     def _add_paths(self, port: int, parsed: dict) -> None:
         """
@@ -638,8 +703,9 @@ def coverage(surface: AttackSurface) -> list:
     ):
         if not open_:
             continue
-        effective = outcome or prior
-        from_prior = not outcome and bool(prior)
+        # Whichever session did better stands, and the check says which.
+        effective = best_ad_outcome(outcome, prior)
+        from_prior = bool(prior) and effective == prior and effective != best_ad_outcome(outcome)
         stamp = f" ({surface.prior_timestamp})" if from_prior and surface.prior_timestamp else ""
         if effective == "ok":
             checks.append(Check(name, True,
@@ -654,6 +720,13 @@ def coverage(surface: AttackSurface) -> list:
                                 "correct configuration and a result in itself"
                                 + (f", recorded in a previous session{stamp}" if from_prior else ""),
                                 from_prior=from_prior, state="prior" if from_prior else "pass"))
+        elif effective == "rootdse_only":
+            dn = f" ({surface.ldap_base_dn})" if surface.ldap_base_dn else ""
+            checks.append(Check(name, False,
+                                "only the rootDSE was read, so whether the directory answers "
+                                "an anonymous search was never tested - call run_ldap_enum "
+                                f"again with base_dn set to the defaultNamingContext{dn}",
+                                state="miss"))
         elif effective == "denied":
             checks.append(Check(name, False,
                                 "the enumeration did not produce a readable result",

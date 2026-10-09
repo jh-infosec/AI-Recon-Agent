@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.7.1] - 2026-10-09
+
+From the first live session with the AD tools. The tools worked: the model read `defaultNamingContext` out of the rootDSE and passed it back as `base_dn`, the validator accepted it, and both refusals were classified correctly. Everything around the tools, the layer that says what a result means, got something wrong. Every defect below was reproduced offline from the existing captures before anything was changed; none needed a second paid run.
+
+Fixed: **A rootDSE-only LDAP call passed the coverage gate as a refusal.** The first `run_ldap_enum` call, with no base DN, sends no search at all. v0.7.0 classified it as "restricted" and passed the check with "the target refused anonymous enumeration", a refusal nobody had asked for. A session that stopped after that first call would have reported a hardened directory it never tested. The parser now records whether a search was sent, a rootDSE-only result is its own outcome, and the check stays open with the next call spelled out: run it again with `base_dn` set to the reported naming context. The same completion-bias shape v0.6.1 closed for web scans, this time in the gate itself.
+
+Fixed: **The model was told `anonymous_login: true` and reported it as a weakness.** "The anonymous SMB door is cracked", on a host that listed nothing. smbclient prints "Anonymous login successful" when the null session setup succeeds; what that session can read is a separate control, and here it read nothing. The model view renames the field to `session_setup_accepted` and states the outcome in words, as v0.6.2 did for the zone transfer.
+
+Fixed: **The model said "an anonymous search returned zero entries" about a search that never ran.** The LDAP model view now carries `searched` and a plain result sentence for each case: not searched (with the base DN to use), refused, or answered.
+
+Fixed: **SMB and LDAP outcomes were never read back from state.** They were written into each snapshot and dropped on load, so the PRIOR path for both checks could not fire. The v0.7.0 test fed a hand-built dict straight to the surface and never went through a save and a load. Both outcomes now round-trip, validated against a closed set like every other stored value, and a prior rootDSE-only session does not count as a pass.
+
+Fixed: **Both AD outcomes were last-write-wins.** A later failed call erased an earlier one that worked. Best wins now, as it already did for web enumeration.
+
+Fixed: **The console printed nothing for either AD tool,** so a refusal looked exactly like a crash. Both now print the DC name, the base DN, and the outcome.
+
+Fixed: **The site root counted as discovered content.** dirb's `common.txt` has a blank entry, so ffuf requests the bare URL. On the IIS box that was the only hit, the 703-byte default page, and it printed as a nameless line and passed the check as "the tool returned usable results". A root hit is now evidence that the site answered (it corroborates an empty scan, per v0.6.3) rather than a find, and prints as `/ (site root)`. Marked INFERRED: the shape comes from the live console line, not yet a verbatim capture.
+
+Fixed: **The model's narration put long dashes on the terminal and into both reports.** The style test checks the source, and this text never touches the source. Model prose (narration and finish payloads, in both agents) is now normalised to hyphens before it is printed or logged. Raw tool output is evidence and is never rewritten.
+
+Not a defect: the run exited 3 because the model declared "a solid, complete picture" without fuzzing vhosts, with port 80 open and two hostnames known. That is the gate catching exactly what it exists to catch.
+
+Moved: smarter recon, previously v0.7.1, is now v0.7.2.
+
+Tests: 33 new (664 total). Run against the shipped v0.7.0, 27 of them fail; the other six are guards that the fixes do not overreach.
+
 ## [0.7.0] - 2026-10-01
 
 Anonymous, read-only Active Directory enumeration. Three sessions against a live domain controller all ended the same way: the agent correctly worked out that the web port was a decoy and the real surface was AD, then said it had no tools for it. Now it has two.

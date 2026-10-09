@@ -477,8 +477,11 @@ def main():
 
         for block in response.content:
             if block.type == "text" and block.text.strip():
-                print(f"\n{console.c('[claude]', console.BLUE, console.BOLD)} {block.text.strip()}\n")
-                report.log_analysis(block.text)
+                # The model's own prose, so the house style applies to it; the
+                # conversation history keeps what it actually wrote.
+                prose = completeness.plain_dashes(block.text)
+                print(f"\n{console.c('[claude]', console.BLUE, console.BOLD)} {prose.strip()}\n")
+                report.log_analysis(prose)
                 assistant_content.append({"type": "text", "text": block.text})
 
             elif block.type == "tool_use":
@@ -519,7 +522,7 @@ def main():
                         print(console.bad(
                             f"could not render the summary ({type(exc).__name__}: {exc}); "
                             "the tool results above are still in the report"))
-                    print(f"\n[agent] Session complete.\n\n{block.input.get('summary', '')}\n")
+                    print(f"\n[agent] Session complete.\n\n{payload.get('summary', '')}\n")
                     finished = True
                     tool_results.append(
                         {
