@@ -933,6 +933,19 @@ is a fetch of `/`. It now corroborates the site rather than counting as content.
 model's narration never becomes one. It is normalised at the point it is
 printed and logged.
 
+Fixed in v0.7.2, from the TLS capture.
+
+**The issuer was harvested as a hostname.** A regex over nmap's ssl-cert
+output matched `commonName=` on the Issuer line as well as the Subject line.
+Self-signed lab certificates carry the same name in both, so it went unseen
+from v0.4.0 until the first capture. Names now come from nmap's structured
+tables, which separate subject from issuer. A parser written from an
+assumption passes every test written from the same assumption; this one had
+been in the code since v0.4.0.
+
+**A bare NetBIOS name became a vhost obligation.** Certificate names now need
+a dot.
+
 ## Accepted Designs
 
 Decided, not yet built. Recorded so the implementation has something to be

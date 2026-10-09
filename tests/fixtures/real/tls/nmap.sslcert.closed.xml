@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<?xml-stylesheet href="file:///usr/share/nmap/nmap.xsl" type="text/xsl"?>
+<!-- Nmap 7.99 scan initiated Fri Oct  9 10:26:56 2026 as: /usr/lib/nmap/nmap -&#45;privileged -Pn -p 8444 -&#45;script ssl-cert -oX - 127.0.0.1 -->
+<nmaprun scanner="nmap" args="/usr/lib/nmap/nmap -&#45;privileged -Pn -p 8444 -&#45;script ssl-cert -oX - 127.0.0.1" start="1791534416" startstr="Fri Oct  9 10:26:56 2026" version="7.99" xmloutputversion="1.05">
+<scaninfo type="syn" protocol="tcp" numservices="1" services="8444"/>
+<verbose level="0"/>
+<debugging level="0"/>
+<host starttime="1791534416" endtime="1791534416"><status state="up" reason="user-set" reason_ttl="0"/>
+<address addr="127.0.0.1" addrtype="ipv4"/>
+<hostnames>
+<hostname name="localhost" type="PTR"/>
+</hostnames>
+<ports><port protocol="tcp" portid="8444"><state state="closed" reason="reset" reason_ttl="64"/><service name="pcsync-http" method="table" conf="3"/></port>
+</ports>
+<times srtt="36" rttvar="5000" to="100000"/>
+</host>
+<runstats><finished time="1791534416" timestr="Fri Oct  9 10:26:56 2026" summary="Nmap done at Fri Oct  9 10:26:56 2026; 1 IP address (1 host up) scanned in 0.11 seconds" elapsed="0.11" exit="success"/><hosts up="1" down="0" total="1"/>
+</runstats>
+</nmaprun>

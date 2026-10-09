@@ -24,13 +24,15 @@ the tool cannot share the parser's mistakes.
 
 | Tool     | Version              | Files |
 |----------|----------------------|-------|
-| ffuf     | 2.1.0-dev            | `ffuf.dir.json`, `ffuf.ext.json`, `ffuf.vhost.json`, `ffuf.zero.json` |
+| ffuf     | 2.1.0-dev            | `ffuf.dir.json`, `ffuf.ext.json`, `ffuf.vhost.json`, `ffuf.zero.json`, `ffuf.rootonly.json` |
 | whatweb  | 0.6.4                | `whatweb.json`, `whatweb.redirect.json` |
 | gobuster | 3.8.2                | `gobuster.txt` |
 | nmap     | 7.99                 | `nmap.xml`, `nmap.empty.xml` |
 | smbclient | 4.24.5-Debian       | `ad/smb.shares.txt`, `ad/smb.shares.ip.txt` |
 | rpcclient | 4.24.5-Debian       | `ad/rpc.dominfo.txt`, `ad/rpc.users.txt`, `ad/rpc.groups.txt`, `ad/rpc.shares.txt` |
 | ldapsearch | OpenLDAP 2.6.14    | `ad/ldap.rootdse.txt`, `ad/ldap.users.txt`, `ad/ldap.computers.txt` |
+| nmap ssl-cert | 7.99            | `tls/nmap.sslcert.sans.xml`, `tls/nmap.sslcert.dc.xml`, `tls/nmap.sslcert.closed.xml` |
+| openssl  | 3.6.3                | `tls/x509.sans.txt`, `tls/sclient.ldaps.reset.txt` |
 | dig      | 9.20.27-1-Debian     | `dig.a.txt`, `dig.any.txt`, `dig.axfr.txt`, `dig.nxdomain.txt`, `dig.ptr.txt`, `dig.multi.txt` |
 
 Platform: Kali GNU/Linux Rolling 2026.3, kernel 7.1.5. Captured 2026-09-29
@@ -48,6 +50,10 @@ results up by name, never by position.
 - `ffuf.vhost.json`: vhost mode with `-ac`. Autocalibration filters the default
   response by size, so the result list is empty. This is the normal, legitimate
   shape of a vhost fuzz that finds nothing.
+- `ffuf.rootonly.json`: captured 2026-10-09 against the live IIS on the domain
+  controller, with dirb's `common.txt`. That wordlist's first line is blank, so
+  ffuf requests the bare URL; the 703-byte default page was the only hit. The
+  `input` is an empty string, and it must not count as discovered content.
 - `ffuf.zero.json`: dir mode that matches nothing. ffuf still writes a full
   document with `results: []` and its config, not an empty file.
 - `whatweb.json`: `--log-json` output. A JSON array with one object per line.
@@ -103,6 +109,28 @@ that reads as an empty result is how a parser invents a finding.
 - `ad/nmap.smb.txt`: smb-os-discovery and smb-enum-shares produced nothing;
   only smb2-security-mode answered, reporting signing enabled and required.
 
+## tls/ - certificates
+
+Captured 2026-10-09 with `tests/fixtures/capture_tls_fixtures.sh`.
+
+- `tls/nmap.sslcert.sans.xml`: a throwaway self-signed certificate the script
+  generates, with SANs for a plain name, a nested name, a wildcard, a
+  mixed-case name, an IP and an email. No lab box is guaranteed to produce a
+  certificate naming hosts the scan never saw, so this one is made locally.
+  Note nmap writes the subject and issuer as separate tables: that is what
+  lets the parser skip the issuer.
+- `tls/nmap.sslcert.dc.xml`: the live domain controller. 3389 (RDP) returned a
+  certificate naming the DC; 636 and 3269 (LDAPS) are open and returned none.
+- `tls/nmap.sslcert.closed.xml`: a closed port, no script output.
+- `tls/x509.sans.txt`: the local certificate decoded by openssl, for reference.
+- `tls/sclient.ldaps.reset.txt`: openssl against the DC's LDAPS port. The
+  server reset the handshake and offered no certificate, which is why there
+  is no separate TLS tool: openssl gets nothing nmap does not, and cannot
+  speak RDP at all.
+
+Not captured: a CA-signed certificate. The issuer test edits the DC capture's
+issuer, in both the table and the output text, to stand in for one.
+
 ## Not yet captured
 
 - A successful AXFR. Still not captured: the one live domain controller we have
@@ -112,9 +140,6 @@ that reads as an empty result is how a parser invents a finding.
   constructed sample marked INFERRED in `test_v062.py`. The MX and SOA hostname
   tests in `test_regressions_v0511.py` are marked INFERRED for the same reason.
   A box that allows transfers would settle all three.
-- An ffuf hit on dirb `common.txt`'s blank entry (the site root). Seen on the
-  live IIS run as a nameless `[status 200, size 703]` line; `test_v071.py`
-  uses a constructed result marked INFERRED until it is captured.
 - A permissive SMB share listing and a successful rpcclient user enumeration.
   This DC denied both, so the success-path row formats in `parse_smb_enum` come
   from smbclient's and rpcclient's documented output and the tests covering

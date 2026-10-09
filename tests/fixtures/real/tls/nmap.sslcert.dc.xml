@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<?xml-stylesheet href="file:///usr/share/nmap/nmap.xsl" type="text/xsl"?>
+<!-- Nmap 7.99 scan initiated Fri Oct  9 10:26:56 2026 as: /usr/lib/nmap/nmap -&#45;privileged -Pn -p 443,636,3269,3389,5986,8443 -&#45;script ssl-cert -oX - 10.112.180.141 -->
+<nmaprun scanner="nmap" args="/usr/lib/nmap/nmap -&#45;privileged -Pn -p 443,636,3269,3389,5986,8443 -&#45;script ssl-cert -oX - 10.112.180.141" start="1791534416" startstr="Fri Oct  9 10:26:56 2026" version="7.99" xmloutputversion="1.05">
+<scaninfo type="syn" protocol="tcp" numservices="6" services="443,636,3269,3389,5986,8443"/>
+<verbose level="0"/>
+<debugging level="0"/>
+<host starttime="1791534416" endtime="1791534419"><status state="up" reason="user-set" reason_ttl="0"/>
+<address addr="10.112.180.141" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+<ports><port protocol="tcp" portid="443"><state state="closed" reason="reset" reason_ttl="126"/><service name="https" method="table" conf="3"/></port>
+<port protocol="tcp" portid="636"><state state="open" reason="syn-ack" reason_ttl="126"/><service name="ldapssl" method="table" conf="3"/></port>
+<port protocol="tcp" portid="3269"><state state="open" reason="syn-ack" reason_ttl="126"/><service name="globalcatLDAPssl" method="table" conf="3"/></port>
+<port protocol="tcp" portid="3389"><state state="open" reason="syn-ack" reason_ttl="126"/><service name="ms-wbt-server" method="table" conf="3"/><script id="ssl-cert" output="Subject: commonName=AttacktiveDirectory.spookysec.local&#xa;Issuer: commonName=AttacktiveDirectory.spookysec.local&#xa;Public Key type: rsa&#xa;Public Key bits: 2048&#xa;Signature Algorithm: sha256WithRSAEncryption&#xa;Not valid before: 2026-10-08T07:38:07&#xa;Not valid after:  2027-04-09T07:38:07&#xa;MD5:     5ceb 49f9 0956 4464 64ef 1c5c 4d73 ed6e&#xa;SHA-1:   b932 cf4f 641f eb7a e408 ff5d 0939 c191 3c74 5a8e&#xa;SHA-256: 4d8e 0282 d9c3 ea76 8ca2 2e44 1339 fcae 5465 9db9 2a85 07ee b5e7 2a83 7316 c99e"><table key="subject">
+<elem key="commonName">AttacktiveDirectory.spookysec.local</elem>
+</table>
+<table key="issuer">
+<elem key="commonName">AttacktiveDirectory.spookysec.local</elem>
+</table>
+<table key="pubkey">
+<elem key="type">rsa</elem>
+<elem key="bits">2048</elem>
+<elem key="modulus">C227ACFFE81C14116E9FD21D577FB6E9300AA50437EA93806C572DCF24DC0E476F9986A8C3C07E9145151CF72904331B1B8FCE6E449ABF39C24EFBB1E2A81A17DCA5B8A1E4CFA56EBB061798BD5B32CB99E75180DFE28EF83E28A7759E10AF11F54324C191B89731A357B9342199916685F63A3A4EF9EAB995FB4725DBCF9A416881EFC8F3288AA0A15A866F4334FFD32C42F1808F76AA8DEC2F0B6A60A6868527DC419B9056D623067E4B9DDC3367C1AA3C4107F04855448E2F25E3BB353DDDDB68AF452AB49CD6BCE4E83B585EFB132C17682255D85FA88A0A7AABAB8F19CFCE140994AF1EE679ECA587F40E1E8D2C197457F23EE2D591590BDF4A02FD0AE9</elem>
+<elem key="exponent">65537</elem>
+</table>
+<table key="extensions">
+<table>
+<elem key="name">X509v3 Extended Key Usage</elem>
+<elem key="value">TLS Web Server Authentication</elem>
+</table>
+<table>
+<elem key="name">X509v3 Key Usage</elem>
+<elem key="value">Key Encipherment, Data Encipherment</elem>
+</table>
+</table>
+<elem key="sig_algo">sha256WithRSAEncryption</elem>
+<table key="validity">
+<elem key="notBefore">2026-10-08T07:38:07</elem>
+<elem key="notAfter">2027-04-09T07:38:07</elem>
+</table>
+<elem key="md5">5ceb49f90956446464ef1c5c4d73ed6e</elem>
+<elem key="sha1">b932cf4f641feb7ae408ff5d0939c1913c745a8e</elem>
+<elem key="sha256">4d8e0282d9c3ea768ca22e441339fcae54659db92a8507eeb5e72a837316c99e</elem>
+<elem key="pem">-&#45;&#45;&#45;&#45;BEGIN CERTIFICATE-&#45;&#45;&#45;&#45;&#xa;MIIDCjCCAfKgAwIBAgIQL40gsswhOL9Mn6+dPqqwhzANBgkqhkiG9w0BAQsFADAu&#xa;MSwwKgYDVQQDEyNBdHRhY2t0aXZlRGlyZWN0b3J5LnNwb29reXNlYy5sb2NhbDAe&#xa;Fw0yNjEwMDgwNzM4MDdaFw0yNzA0MDkwNzM4MDdaMC4xLDAqBgNVBAMTI0F0dGFj&#xa;a3RpdmVEaXJlY3Rvcnkuc3Bvb2t5c2VjLmxvY2FsMIIBIjANBgkqhkiG9w0BAQEF&#xa;AAOCAQ8AMIIBCgKCAQEAwies/+gcFBFun9IdV3+26TAKpQQ36pOAbFctzyTcDkdv&#xa;mYaow8B+kUUVHPcpBDMbG4/ObkSavznCTvux4qgaF9yluKHkz6VuuwYXmL1bMsuZ&#xa;51GA3+KO+D4op3WeEK8R9UMkwZG4lzGjV7k0IZmRZoX2OjpO+eq5lftHJdvPmkFo&#xa;ge/I8yiKoKFahm9DNP/TLELxgI92qo3sLwtqYKaGhSfcQZuQVtYjBn5LndwzZ8Gq&#xa;PEEH8EhVRI4vJeO7NT3d22ivRSq0nNa85Og7WF77EywXaCJV2F+oigp6q6uPGc/O&#xa;FAmUrx7meeylh/QOHo0sGXRX8j7i1ZFZC99KAv0K6QIDAQABoyQwIjATBgNVHSUE&#xa;DDAKBggrBgEFBQcDATALBgNVHQ8EBAMCBDAwDQYJKoZIhvcNAQELBQADggEBACkY&#xa;OsCEbz/PsFLArooliT2R0Pncn0rC6wpEbRAYj8vp230RRi/8pLFSDBC69sWgJBbg&#xa;j/TeoUE9WRUCxtOW9P65YpkYr2j7C2gR7wneZT5sn/jvw124Lirh1XHwiNEUwD9C&#xa;0gEW765fB1qHGZaa7DpdSc24ZuvUxtaCl1OfuFMCNB395CF+bsolLonfg1IPSNnX&#xa;rBiQt7fYDX5bbzICNpBDoPat6dDwog/uEjZ86GNyBIAcm1TRnzkt8tOJRnqkooPQ&#xa;OSqEKJppKya0o0mPB1U+WAJkRx3YGOEVm2syX/hdTXRTe6fpqGDIepUC06CeUfB9&#xa;xgBYvfFanXmCDnO0DDE=&#xa;-&#45;&#45;&#45;&#45;END CERTIFICATE-&#45;&#45;&#45;&#45;&#xa;</elem>
+</script></port>
+<port protocol="tcp" portid="5986"><state state="closed" reason="reset" reason_ttl="126"/><service name="wsmans" method="table" conf="3"/></port>
+<port protocol="tcp" portid="8443"><state state="closed" reason="reset" reason_ttl="126"/><service name="https-alt" method="table" conf="3"/></port>
+</ports>
+<times srtt="208263" rttvar="49711" to="407107"/>
+</host>
+<runstats><finished time="1791534419" timestr="Fri Oct  9 10:26:59 2026" summary="Nmap done at Fri Oct  9 10:26:59 2026; 1 IP address (1 host up) scanned in 3.23 seconds" elapsed="3.23" exit="success"/><hosts up="1" down="0" total="1"/>
+</runstats>
+</nmaprun>

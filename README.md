@@ -1,6 +1,6 @@
 # ai-recon-agent
 
-**v0.7.1**
+**v0.7.2**
 
 ai-recon-agent is a small security study kit with two halves: a **red-team
 recon agent** for practicing enumeration on machines you're authorized to
@@ -91,6 +91,10 @@ helps to know what's in the box:
 - **`ffuf` (vhost mode)** - when a scan reveals a hostname like
   `something.htb`, Claude fuzzes the `Host` header to find hidden virtual
   hosts. Add discovered vhosts to your `/etc/hosts` to browse them.
+- **TLS certificate names** - not a tool of its own. nmap's default scripts
+  already read the certificate on every TLS port (RDP included), and the
+  subject and SAN names in it become hostnames for vhost fuzzing, labelled in
+  the console with the port they came from.
 - **DNS enum** - if port 53 is open, Claude attempts a zone transfer (AXFR)
   and record lookups. A successful AXFR against a misconfigured server is a
   classic, high-value finding.
@@ -149,6 +153,7 @@ reports/                  - generated reports land here (git-ignored)
 tests/                    - pytest suites: safety gate, workspace lock, regressions
 tests/fixtures/real/      - verbatim tool output the parser tests read (never hand-edited)
 tests/fixtures/capture_fixtures.sh - re-captures it against a local web server
+tests/fixtures/capture_ad_fixtures.sh, capture_tls_fixtures.sh - AD and TLS captures
 state/                    - session snapshots, one folder per target (git-ignored)
 pyproject.toml            - ruff + pytest config
 requirements.txt          - runtime deps       requirements-dev.txt - dev/CI deps
@@ -163,7 +168,7 @@ architecture.md           - design principles, constraints, cleared defects
 ```bash
 pip install -r requirements-dev.txt
 ruff check .      # lint
-python -m pytest -q  # run the full suite (664 tests)
+python -m pytest -q  # run the full suite (682 tests)
 pip-audit -r requirements.txt   # supply-chain audit
 ```
 

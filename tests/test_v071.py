@@ -30,10 +30,10 @@ the layer that tells the operator and the model what a result means.
      reports. The style test checks the source; this text never touches it.
 
 None of these was caught by the 631 tests that passed before this file. Run
-against the shipped v0.7.0, 27 of the 33 tests below fail. The other six pass
-there on purpose: they are guards that the fixes do not overreach (a real path
-next to the root hit is still a find, a search that ran still passes, and so
-on).
+against the shipped v0.7.0, 27 of the tests below fail. The rest pass there on
+purpose: guards that the fixes do not overreach (a real path next to the root
+hit is still a find, a search that ran still passes, and so on), plus one that
+checks the ffuf capture is the shape the fix assumes.
 """
 
 import sys
@@ -290,10 +290,18 @@ def test_a_tampered_ad_outcome_is_dropped(tmp_path):
 # --------------------------------------------------------------------------- #
 # 6. the site root is not discovered content
 # --------------------------------------------------------------------------- #
-# INFERRED from the live console line "[status 200, size 703]" with no name:
-# 703 bytes is IIS's default iisstart.htm, and the blank name is dirb
-# common.txt's empty entry. Not yet a verbatim capture.
-ROOT_ONLY = {"results": [{"input": "", "status": 200, "length": 703}], "count": 1, "mode": "dir"}
+# Captured verbatim from the live box (fixtures/real/ffuf.rootonly.json):
+# dirb common.txt's blank first line requested the bare URL, and the 703-byte
+# IIS default page was the only hit in 4,614 requests.
+REAL = Path(__file__).resolve().parent / "fixtures" / "real"
+ROOT_ONLY = parsers.parse_ffuf_json((REAL / "ffuf.rootonly.json").read_text(encoding="utf-8"))
+
+
+def test_the_capture_is_the_shape_the_fix_assumes():
+    assert ROOT_ONLY["count"] == 1
+    hit = ROOT_ONLY["results"][0]
+    assert hit["input"] == "" and hit["status"] == 200 and hit["length"] == 703
+    assert hit["url"].endswith("/")
 
 
 def test_a_root_only_hit_is_an_empty_scan_not_a_find():

@@ -129,12 +129,17 @@ runs, which moves to v0.6.0.
   unsent search actually mean.
 - SMB and LDAP outcomes survive a real save and load.
 
-## v0.7.2 - smarter recon
+## v0.7.2 - TLS certificate names (shipped)
+
+- Subject CN and SAN DNS names from nmap's ssl-cert tables become hostnames,
+  with the port recorded. The issuer is never harvested.
+- No separate TLS tool: nmap's default scripts already read every
+  certificate, RDP included.
+
+## v0.7.3 - smarter recon
 
 - Target-aware wordlist generation from fingerprint output, subject to the
   v0.3.1 path rules for anything written to disk.
-- TLS certificate inspection for hostname and vhost discovery, since SANs and
-  CNs routinely leak internal names.
 - JSON report output alongside Markdown and HTML.
 
 ## v0.8.0 - purple

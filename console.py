@@ -249,8 +249,13 @@ def highlights(tool_name: str, parsed: dict) -> list:
                     svc += "/ssl"
                 detail = f" ({' '.join(bits)})" if bits else ""
                 out.append(f"{p.get('port')}/{p.get('protocol') or 'tcp'} open - {svc}{detail}")
+        source = {}
+        for port, names in (parsed.get("cert_names") or {}).items():
+            for name in names:
+                source.setdefault(name, port)
         for name in parsed.get("hostnames", []):
-            out.append(f"hostname: {name}")
+            where = f" (TLS certificate on {source[name]})" if name in source else ""
+            out.append(f"hostname: {name}{where}")
 
     elif tool_name in {"run_ffuf", "run_gobuster"}:
         rows = []

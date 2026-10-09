@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.7.2] - 2026-10-09
+
+Hostnames from TLS certificates. The feature already existed: since v0.4.0 the nmap parser has run a regex over the ssl-cert script's output and harvested anything after `commonName=` or `DNS:`. It was written without a capture. `tests/fixtures/capture_tls_fixtures.sh` took one, from a throwaway certificate with six SAN entries of different kinds and from the live domain controller, and the capture showed three things wrong.
+
+Fixed: **The issuer's name was harvested as if it were this server's.** The regex matched `commonName=` anywhere in the output, which includes the `Issuer:` line. A self-signed lab certificate has the same name in both, which is why nothing noticed. On a CA-signed certificate the issuer is the CA, and its name became a vhost obligation. Names now come from nmap's structured tables, which the capture shows it always writes: the subject's common name and the DNS entries of the SAN, nothing else. The output-text path remains as a fallback and skips the issuer too.
+
+Fixed: **A single-label name became a vhost obligation.** A workgroup Windows host puts its bare NetBIOS name in the RDP certificate, and a name with no dot is not a domain anyone can fuzz under. Certificate names now need a dot. The unsatisfiable-check shape again (v0.5.11, v0.6.3, v0.7.0).
+
+Fixed: **No provenance.** A certificate name printed as a plain hostname, indistinguishable from a DNS answer. The parser records which port each name came from, the console prints `hostname: x (TLS certificate on 3389)`, and the model view keeps the mapping at every budget level, since script output is the first thing trimmed.
+
+Also: names are lowercased in the parser, and a wildcard keeps its parent (`*.staging.box.htb` gives `staging.box.htb`, which is the domain to fuzz). IP and email SAN entries are skipped.
+
+Decided: **no new tool.** The capture settled it. nmap read the RDP certificate on the DC, which openssl cannot do because RDP negotiates before TLS starts, and both LDAPS ports reset the handshake with no certificate for either tool. Everything a separate TLS tool would add is already in the scan the agent runs first, so this is a parser change and sends no extra traffic.
+
+Moved: target-aware wordlists and JSON report output, the rest of the old v0.7.2, are now v0.7.3.
+
+Tests: 17 new (682 total). Run against v0.7.1, 10 fail; the other 7 are guards.
+
 ## [0.7.1] - 2026-10-09
 
 From the first live session with the AD tools. The tools worked: the model read `defaultNamingContext` out of the rootDSE and passed it back as `base_dn`, the validator accepted it, and both refusals were classified correctly. Everything around the tools, the layer that says what a result means, got something wrong. Every defect below was reproduced offline from the existing captures before anything was changed; none needed a second paid run.
@@ -16,7 +34,7 @@ Fixed: **Both AD outcomes were last-write-wins.** A later failed call erased an 
 
 Fixed: **The console printed nothing for either AD tool,** so a refusal looked exactly like a crash. Both now print the DC name, the base DN, and the outcome.
 
-Fixed: **The site root counted as discovered content.** dirb's `common.txt` has a blank entry, so ffuf requests the bare URL. On the IIS box that was the only hit, the 703-byte default page, and it printed as a nameless line and passed the check as "the tool returned usable results". A root hit is now evidence that the site answered (it corroborates an empty scan, per v0.6.3) rather than a find, and prints as `/ (site root)`. Marked INFERRED: the shape comes from the live console line, not yet a verbatim capture.
+Fixed: **The site root counted as discovered content.** dirb's `common.txt` has a blank entry, so ffuf requests the bare URL. On the IIS box that was the only hit, the 703-byte default page, and it printed as a nameless line and passed the check as "the tool returned usable results". A root hit is now evidence that the site answered (it corroborates an empty scan, per v0.6.3) rather than a find, and prints as `/ (site root)`. Tested against `tests/fixtures/real/ffuf.rootonly.json`, captured from the live box after the run: one result in 4,614 requests, `input` an empty string.
 
 Fixed: **The model's narration put long dashes on the terminal and into both reports.** The style test checks the source, and this text never touches the source. Model prose (narration and finish payloads, in both agents) is now normalised to hyphens before it is printed or logged. Raw tool output is evidence and is never rewritten.
 
@@ -24,7 +42,7 @@ Not a defect: the run exited 3 because the model declared "a solid, complete pic
 
 Moved: smarter recon, previously v0.7.1, is now v0.7.2.
 
-Tests: 33 new (664 total). Run against the shipped v0.7.0, 27 of them fail; the other six are guards that the fixes do not overreach.
+Tests: 34 new (665 total). Run against the shipped v0.7.0, 27 of the original 33 fail; the other six are guards that the fixes do not overreach, and the 34th checks the capture itself.
 
 ## [0.7.0] - 2026-10-01
 

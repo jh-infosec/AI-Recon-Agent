@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<?xml-stylesheet href="file:///usr/share/nmap/nmap.xsl" type="text/xsl"?>
+<!-- Nmap 7.99 scan initiated Fri Oct  9 10:26:55 2026 as: /usr/lib/nmap/nmap -&#45;privileged -Pn -p 8443 -&#45;script ssl-cert -oX - 127.0.0.1 -->
+<nmaprun scanner="nmap" args="/usr/lib/nmap/nmap -&#45;privileged -Pn -p 8443 -&#45;script ssl-cert -oX - 127.0.0.1" start="1791534415" startstr="Fri Oct  9 10:26:55 2026" version="7.99" xmloutputversion="1.05">
+<scaninfo type="syn" protocol="tcp" numservices="1" services="8443"/>
+<verbose level="0"/>
+<debugging level="0"/>
+<host starttime="1791534415" endtime="1791534415"><status state="up" reason="user-set" reason_ttl="0"/>
+<address addr="127.0.0.1" addrtype="ipv4"/>
+<hostnames>
+<hostname name="localhost" type="PTR"/>
+</hostnames>
+<ports><port protocol="tcp" portid="8443"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="https-alt" method="table" conf="3"/><script id="ssl-cert" output="Subject: commonName=box.htb/organizationName=Capture Lab&#xa;Subject Alternative Name: DNS:box.htb, DNS:dev.box.htb, DNS:*.staging.box.htb, DNS:Admin.Box.HTB, IP Address:127.0.0.1, email:ops@box.htb&#xa;Issuer: commonName=box.htb/organizationName=Capture Lab&#xa;Public Key type: rsa&#xa;Public Key bits: 2048&#xa;Signature Algorithm: sha256WithRSAEncryption&#xa;Not valid before: 2026-10-09T08:26:54&#xa;Not valid after:  2026-10-11T08:26:54&#xa;MD5:     3158 eef3 94b2 79b9 9951 ed24 bbeb 08dc&#xa;SHA-1:   6a6c bb1b ba5a 1d23 3234 bf46 40b8 b87f 1588 67b8&#xa;SHA-256: 0824 c4e8 eadf 47f7 fff3 88ba d323 ae69 45ec 6e1f 0e9a 417c e41b 42cc 3ec3 a04d"><table key="subject">
+<elem key="commonName">box.htb</elem>
+<elem key="organizationName">Capture Lab</elem>
+</table>
+<table key="issuer">
+<elem key="commonName">box.htb</elem>
+<elem key="organizationName">Capture Lab</elem>
+</table>
+<table key="pubkey">
+<elem key="type">rsa</elem>
+<elem key="bits">2048</elem>
+<elem key="modulus">B88F462A9F55F4AA0589A93807D97B94789059E5686DFA809EAD0A92372BCB061F70C55DEF4F031F7C4F03A0062AB41B17BCEE9222635BAC861DEC60A1C9A63C5134D5B513F54C0C30FAC519D07263CE3096582664F97D19BC873DC910163F5204F57F349FCD66E55DF222B864BE97D9047E02D1D1194D88C111820CAB340ECBD1CCA02B1F55336716C7F85E69AC7BBA91D72FF9D41366D9F6D65C1FB2270787EE232B790EC3CE1075579DA92BBC50002F9A307B61153EC1F6E056F74EF03F1D43FAFB95A8574174E27A34F0A599A1C1A542BA67CAF95A969771E6D6E87E699503B06D5135F82749026A195D451395B69AC6C47D5D2330053D05D4F25C7631B3</elem>
+<elem key="exponent">65537</elem>
+</table>
+<table key="extensions">
+<table>
+<elem key="name">X509v3 Subject Key Identifier</elem>
+<elem key="value">99:A2:75:66:43:E8:4F:E2:B4:97:CC:08:AC:AF:E4:9A:AA:D6:81:90</elem>
+</table>
+<table>
+<elem key="name">X509v3 Authority Key Identifier</elem>
+<elem key="value">99:A2:75:66:43:E8:4F:E2:B4:97:CC:08:AC:AF:E4:9A:AA:D6:81:90</elem>
+</table>
+<table>
+<elem key="name">X509v3 Basic Constraints</elem>
+<elem key="value">CA:TRUE</elem>
+<elem key="critical">true</elem>
+</table>
+<table>
+<elem key="name">X509v3 Subject Alternative Name</elem>
+<elem key="value">DNS:box.htb, DNS:dev.box.htb, DNS:*.staging.box.htb, DNS:Admin.Box.HTB, IP Address:127.0.0.1, email:ops@box.htb</elem>
+</table>
+</table>
+<elem key="sig_algo">sha256WithRSAEncryption</elem>
+<table key="validity">
+<elem key="notBefore">2026-10-09T08:26:54</elem>
+<elem key="notAfter">2026-10-11T08:26:54</elem>
+</table>
+<elem key="md5">3158eef394b279b99951ed24bbeb08dc</elem>
+<elem key="sha1">6a6cbb1bba5a1d233234bf4640b8b87f158867b8</elem>
+<elem key="sha256">0824c4e8eadf47f7fff388bad323ae6945ec6e1f0e9a417ce41b42cc3ec3a04d</elem>
+<elem key="pem">-&#45;&#45;&#45;&#45;BEGIN CERTIFICATE-&#45;&#45;&#45;&#45;&#xa;MIIDiTCCAnGgAwIBAgIUMjTwaZJW2/4FHzMYy1/Fmkjr6dcwDQYJKoZIhvcNAQEL&#xa;BQAwKDEQMA4GA1UEAwwHYm94Lmh0YjEUMBIGA1UECgwLQ2FwdHVyZSBMYWIwHhcN&#xa;MjYxMDA5MDgyNjU0WhcNMjYxMDExMDgyNjU0WjAoMRAwDgYDVQQDDAdib3guaHRi&#xa;MRQwEgYDVQQKDAtDYXB0dXJlIExhYjCCASIwDQYJKoZIhvcNAQEBBQADggEPADCC&#xa;AQoCggEBALiPRiqfVfSqBYmpOAfZe5R4kFnlaG36gJ6tCpI3K8sGH3DFXe9PAx98&#xa;TwOgBiq0Gxe87pIiY1ushh3sYKHJpjxRNNW1E/VMDDD6xRnQcmPOMJZYJmT5fRm8&#xa;hz3JEBY/UgT1fzSfzWblXfIiuGS+l9kEfgLR0RlNiMERggyrNA7L0cygKx9VM2cW&#xa;x/heaax7upHXL/nUE2bZ9tZcH7InB4fuIyt5DsPOEHVXnakrvFAAL5owe2EVPsH2&#xa;4Fb3TvA/HUP6+5WoV0F04no08KWZocGlQrpnyvlalpdx5tbofmmVA7BtUTX4J0kC&#xa;ahldRROVtprGxH1dIzAFPQXU8lx2MbMCAwEAAaOBqjCBpzAdBgNVHQ4EFgQUmaJ1&#xa;ZkPoT+K0l8wIrK/kmqrWgZAwHwYDVR0jBBgwFoAUmaJ1ZkPoT+K0l8wIrK/kmqrW&#xa;gZAwDwYDVR0TAQH/BAUwAwEB/zBUBgNVHREETTBLggdib3guaHRiggtkZXYuYm94&#xa;Lmh0YoIRKi5zdGFnaW5nLmJveC5odGKCDUFkbWluLkJveC5IVEKHBH8AAAGBC29w&#xa;c0Bib3guaHRiMA0GCSqGSIb3DQEBCwUAA4IBAQANqM+Xejmig/hAOfiAXbBZvsQP&#xa;cV0zPOYbS904oWCLYltXX9zlHBLDolsMCHAqlfvo6ufO5yUlAY5uq5SjN88cqUei&#xa;v5U6m+J0y9JBYapGQ+ka02FY/PthvAHD2OUdwK6SZKODsELZ0KRCizMDVQ7V0AM2&#xa;JT1OhmALyUlLUO/mFvGwPSw3DKyZIC0S+v+Y60y2INMslbXGQGL5xrM2bEEiroXB&#xa;CwE6Zned2OK00rfKAVlj0o4kqi1kF6S9Skf8HJArI0gHdSLyf80SKCt+V6sgqxuZ&#xa;9FiRB4hU5bcPuyenZIqtowg9xYZcFzBw1dVmwEL04te98Z0nJZo8SWs0Tbvi&#xa;-&#45;&#45;&#45;&#45;END CERTIFICATE-&#45;&#45;&#45;&#45;&#xa;</elem>
+</script></port>
+</ports>
+<times srtt="74" rttvar="5000" to="100000"/>
+</host>
+<runstats><finished time="1791534415" timestr="Fri Oct  9 10:26:55 2026" summary="Nmap done at Fri Oct  9 10:26:55 2026; 1 IP address (1 host up) scanned in 0.12 seconds" elapsed="0.12" exit="success"/><hosts up="1" down="0" total="1"/>
+</runstats>
+</nmaprun>

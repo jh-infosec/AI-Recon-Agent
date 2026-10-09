@@ -105,19 +105,89 @@ def parse_nmap_xml(xml_text: str) -> dict:
             if state == "open" and portid not in out["open_ports"]:
                 out["open_ports"].append(portid)
 
-            # TLS certificate subjects routinely leak internal hostnames, and
-            # a hostname is what unlocks vhost fuzzing. Harvest them here so
-            # the surface model sees them without a separate tool.
-            for sid, text in scripts.items():
-                if "ssl-cert" in sid:
-                    for m in re.finditer(r"(?:commonName|DNS)[:=]\s*([A-Za-z0-9.\-*]+)", text):
-                        name = m.group(1).lstrip("*.")
-                        if name and name not in out["hostnames"]:
-                            out["hostnames"].append(name)
+            # TLS certificates routinely name hosts the scan never saw, and a
+            # hostname is what unlocks vhost fuzzing. nmap's default scripts
+            # already read the certificate on every TLS port (on a domain
+            # controller that includes RDP, which openssl cannot speak), so
+            # this needs no extra tool and no extra traffic.
+            for s_el in port.findall("script"):
+                if s_el.get("id") != "ssl-cert":
+                    continue
+                names = cert_names(s_el)
+                if names:
+                    out.setdefault("cert_names", {})[portid] = names
+                for name in names:
+                    if name not in out["hostnames"]:
+                        out["hostnames"].append(name)
 
         out["hosts"].append(entry)
 
     out["open_ports"].sort()
+    return out
+
+
+_CERT_SUBJECT_LINE = re.compile(r"^Subject:\s*(?P<rest>.*)$", re.MULTILINE)
+_CERT_SAN_LINE = re.compile(r"^Subject Alternative Name:\s*(?P<rest>.*)$", re.MULTILINE)
+_CERT_CN = re.compile(r"commonName=(?P<cn>[^/,\s]+)")
+
+
+def _cert_name(raw: str) -> str:
+    """
+    One certificate name, normalised, or "" if it is not a host to fuzz.
+
+    A wildcard keeps its parent: *.staging.box.htb says virtual hosts live
+    under staging.box.htb, which is exactly the domain to fuzz. A name needs a
+    dot to count: a workgroup Windows host puts its bare NetBIOS name in the
+    RDP certificate, and a single label is not a vhost anyone can fuzz under,
+    so it would be a check no session could usefully satisfy.
+    """
+    name = (raw or "").strip().rstrip(".").lower()
+    if name.startswith("*."):
+        name = name[2:]
+    if "." not in name or not is_vhost_candidate(name):
+        return ""
+    return name
+
+
+def cert_names(script_el) -> list:
+    """
+    Hostnames from an nmap ssl-cert script element: the subject CN and the
+    DNS entries of the SAN, nothing else.
+
+    Read from nmap's structured tables, which the captures in
+    tests/fixtures/real/tls/ show it always writes. The v0.4.0 version ran a
+    regex over the whole output text, which also took the ISSUER's common
+    name: harmless on a self-signed lab cert, wrong on any CA-signed one,
+    where the issuer is the CA and not this server. IP and email SAN entries
+    are not hostnames and are skipped. Falls back to the Subject and SAN lines
+    of the output text when the tables are absent.
+    """
+    raw = []
+    for table in script_el.findall("table"):
+        if table.get("key") == "subject":
+            for elem in table.findall("elem"):
+                if elem.get("key") == "commonName" and elem.text:
+                    raw.append(elem.text)
+        elif table.get("key") == "extensions":
+            for ext in table.findall("table"):
+                fields = {e.get("key"): (e.text or "") for e in ext.findall("elem")}
+                if fields.get("name") == "X509v3 Subject Alternative Name":
+                    raw += [x.strip()[4:] for x in fields.get("value", "").split(",")
+                            if x.strip().startswith("DNS:")]
+    if not raw:
+        text = script_el.get("output") or ""
+        m = _CERT_SUBJECT_LINE.search(text)
+        if m:
+            raw += [c.group("cn") for c in _CERT_CN.finditer(m.group("rest"))]
+        m = _CERT_SAN_LINE.search(text)
+        if m:
+            raw += [x.strip()[4:] for x in m.group("rest").split(",")
+                    if x.strip().startswith("DNS:")]
+    out = []
+    for r in raw:
+        name = _cert_name(r)
+        if name and name not in out:
+            out.append(name)
     return out
 
 
@@ -135,6 +205,10 @@ def _nmap_view(parsed: dict, script_chars: int | None) -> dict:
         "hostnames": parsed.get("hostnames", []),
         "services": [],
     }
+    # Kept at every detail level: script output is the first thing trimmed to
+    # fit the budget, and where a name came from is the useful part.
+    if parsed.get("cert_names"):
+        out["cert_names"] = {str(k): v for k, v in parsed["cert_names"].items()}
     for host in parsed.get("hosts", []):
         for p in host.get("ports", []):
             if p.get("state") != "open":
