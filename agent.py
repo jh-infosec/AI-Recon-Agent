@@ -48,7 +48,7 @@ from apiclient import call_with_retry, explain
 from knowledge import format_for_prompt
 from report import SessionReport
 from safety import NotAuthorizedError, assert_authorized
-from surface import AttackSurface, coverage, coverage_summary
+from surface import AttackSurface, coverage, coverage_summary, gate_message, unattempted
 from telemetry import Telemetry
 from tools import recon
 from version import __version__
@@ -81,6 +81,13 @@ MAX_CONTINUATIONS = 3
 
 # See hunt.py: one retry recovers a payload written as prose instead of fields.
 MAX_FINISH_RETRIES = 2
+
+# How many times a finish with never-attempted steps is handed back. Once:
+# enough to catch a model that stopped early, and bounded so that a check the
+# model cannot satisfy costs one turn, not a loop. The return is recorded in
+# both reports and on the console, so an exit 0 earned after a return does not
+# look the same as one earned first time.
+MAX_GATE_RETURNS = 1
 
 SYSTEM_PROMPT = f"""\
 You are a study assistant helping a cybersecurity student practice recon \
@@ -447,6 +454,8 @@ def main():
     call_log = repeats.CallLog()
     completed = False
     finish_retries = 0
+    gate_returns = 0
+    gate_returned: list = []
 
     for _turn in range(MAX_TURNS):
         def _create(msgs=messages):
@@ -513,6 +522,29 @@ def main():
                         tool_results.append(
                             {"type": "tool_result", "tool_use_id": block.id,
                              "content": "Session ended."}
+                        )
+                        continue
+                    # The payload is well-formed; now ask whether the work
+                    # behind it was done. Deterministic, from the surface,
+                    # not a second model pass. Skipped on the last turn,
+                    # where a return could not be acted on and would only
+                    # cost the session its summary.
+                    gaps = unattempted(coverage(surface))
+                    if (gaps and gate_returns < MAX_GATE_RETURNS
+                            and _turn < MAX_TURNS - 1):
+                        gate_returns += 1
+                        gate_returned = [g.name for g in gaps]
+                        print(console.warn(
+                            f"finish_session returned: {len(gaps)} step(s) never "
+                            f"attempted - {', '.join(gate_returned)}"))
+                        report.log_gate_return(gate_returned)
+                        tool_results.append(
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": block.id,
+                                "content": gate_message(gaps),
+                                "is_error": True,
+                            }
                         )
                         continue
                     completed = True
@@ -707,6 +739,12 @@ def main():
         print(console.note(
             f"{len(summary['from_prior'])} check(s) were satisfied by an earlier "
             f"session, not by this run"))
+    if gate_returned:
+        # Said even when the session went on to complete: the exit code alone
+        # would hide that the model first tried to stop early.
+        print(console.note(
+            f"the coverage gate returned finish_session once; the model had "
+            f"stopped with {len(gate_returned)} step(s) never attempted"))
     # A step that ran but produced nothing usable needs a different response
     # from one that never ran. Each kind needs a DIFFERENT response, though,
     # and this line used to give one piece of advice for all three: it told the

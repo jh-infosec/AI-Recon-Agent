@@ -946,6 +946,21 @@ been in the code since v0.4.0.
 **A bare NetBIOS name became a vhost obligation.** Certificate names now need
 a dot.
 
+Changed in v0.7.3.
+
+**The gate reported early finishes but never prevented one.** It ran after
+the loop ended, so a model that stopped with a hostname never fuzzed was
+scored incomplete with no chance to act. The gate now also runs when
+finish_session is called, and a finish with MISS checks is returned once.
+The design constraint is unchanged: the gate is code reading the surface, not
+a model judging a model. Only the timing moved. Bounded to one return and to
+never-attempted steps, so it cannot become a retry loop.
+
+**The agent loop had no behavioural test.** Every test of agent.py read its
+source. One of them asserted a line fell within 2500 characters of another
+and broke on the first change to the branch. test_v073.py now runs main()
+against a scripted fake client.
+
 ## Accepted Designs
 
 Decided, not yet built. Recorded so the implementation has something to be

@@ -846,3 +846,45 @@ def coverage_summary(checks: list) -> dict:
         "blocked": [c.name for c in checks if c.state == "blocked"],
         "partial": [c.name for c in checks if c.state == "partial"],
     }
+
+
+# --------------------------------------------------------------------------- #
+# returning an early finish
+# --------------------------------------------------------------------------- #
+def unattempted(checks: list) -> list:
+    """
+    The gaps a session can still act on: checks never attempted.
+
+    Only MISS. A step that ran and came back blocked, empty or cut short has
+    already been tried, and sending the model back to repeat it is the retry
+    loop v0.5 spent several releases removing. A MISS is different: nothing
+    was tried, and the model declared itself finished anyway. That is
+    completion bias, and on the first live AD run it cost the session its
+    exit code - "I have a solid, complete picture", with two hostnames never
+    fuzzed and port 80 open.
+    """
+    return [c for c in checks if not c.satisfied and getattr(c, "state", "") == "miss"]
+
+
+def gate_message(gaps: list) -> str:
+    """
+    What the model is told when its finish is returned. Every name and detail
+    here is this project's own check text; the only target-derived parts are
+    hostnames and a base DN, both validated before they reached a check.
+    """
+    lines = [
+        "finish_session was NOT accepted. The coverage check found steps that "
+        "were never attempted:",
+        "",
+    ]
+    lines += [f"- {c.name}: {c.detail}" for c in gaps]
+    lines += [
+        "",
+        "Do these now. If one genuinely cannot be done, say why in your "
+        "summary instead. Then call finish_session again with the complete "
+        "payload. This will be returned to you once only; the next "
+        "finish_session is accepted whatever it says, and any remaining gap "
+        "is reported as incomplete.",
+    ]
+    return "\n".join(lines)
+

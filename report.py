@@ -83,6 +83,7 @@ class SessionReport:
         self._state: dict | None = None
         self._incomplete: str | None = None
         self._telemetry: dict | None = None
+        self._gate_returned: list = []
 
         self._write(
             f"# Recon session: {target}\n\n"
@@ -283,6 +284,22 @@ class SessionReport:
                 f"https://www.anthropic.com/pricing)\n\n"
             )
 
+    def log_gate_return(self, names: list):
+        """
+        Record that the model tried to finish with steps never attempted and
+        was sent back. Kept in the report whatever happens next: a session that
+        completes after a return is a different result from one that completed
+        first time, and the exit code alone cannot tell them apart.
+        """
+        self._gate_returned = list(names)
+        with open(self.path, "a", encoding="utf-8") as f:
+            f.write("## Finish returned by the coverage gate\n\n")
+            f.write("The model called finish_session with these steps never "
+                    "attempted, and was sent back once:\n\n")
+            for name in names:
+                f.write(f"- {name}\n")
+            f.write("\n")
+
     def log_incomplete(self, reason: str):
         """
         Record that the session ended without the model calling its finish
@@ -453,13 +470,22 @@ class SessionReport:
                 + ("." if sm["complete"] else " - incomplete.")
                 + "</p>"
             )
-            parts.append("<table><thead><tr><th></th><th>Check</th><th>Detail</th>"
-                         "</tr></thead><tbody>")
+            # Paragraphs before the table: these used to be appended after the
+            # <table> tag had opened, which put a <p> inside a table.
             if sm.get("from_prior"):
                 parts.append(
                     f"<p>{len(sm['from_prior'])} of those were satisfied by an earlier "
                     f"session against this target, not by this run.</p>"
                 )
+            if self._gate_returned:
+                parts.append(
+                    "<p class='disclaimer'>The model first called finish with "
+                    f"{len(self._gate_returned)} step(s) never attempted and was sent "
+                    "back once: "
+                    + e(", ".join(self._gate_returned)) + ".</p>"
+                )
+            parts.append("<table><thead><tr><th></th><th>Check</th><th>Detail</th>"
+                         "</tr></thead><tbody>")
             # pass -> green, prior -> grey, miss -> red, and the three
             # "ran but nothing usable" states -> amber (sev-medium).
             badge_for = {

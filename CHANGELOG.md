@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.7.3] - 2026-10-09
+
+Added: **the coverage gate hands an early finish back, once.** On the first live run with the AD tools the model wrote "I have a solid, complete picture" and called finish_session with port 80 open and two hostnames never fuzzed. The gate caught it after the session had ended: exit 3. The next run, given those gaps in its kickoff summary, did the work and exited 0. The model could close the gap; nothing told it while it still could.
+
+Now, when finish_session arrives with checks in the MISS state, it is returned with each gap named and its detail, and the model can do the work or say in its summary why it cannot. Three limits:
+
+- **MISS only.** A step that ran and came back blocked, empty or cut short has been tried. Sending the model back to repeat it is the retry loop v0.5 spent several releases removing.
+- **Once.** The next finish is accepted whatever it says, so a check the model cannot satisfy costs one turn, not a loop.
+- **Never on the last turn,** where a return could not be acted on and would cost the session its summary.
+
+The gate is still code, not a second model pass. It decides from the surface; the model only hears the result.
+
+The return is recorded on the console, in the Markdown report and in the HTML coverage section, including when the session goes on to complete. Exit 0 after a return is a different result from exit 0 first time, and the exit code alone would hide it.
+
+Added: **the agent loop is now tested by running it.** `tests/test_v073.py` drives `agent.main()` with a scripted fake client and canned tool results: an early finish returned and then completed, a model that ignores the return, a session that never needs one, an EMPTY step that must not be returned, the last-turn exception, and payload validation still running first. Until now the loop was only ever tested by reading its source, and the one source-reading test that touched this branch broke on this change because it measured a 2500-character window. It is now bounded by the branch's structure.
+
+Fixed: the HTML coverage section opened its table and then appended the prior-session note inside it, putting a paragraph inside a table. Notes now come before the table.
+
+Moved: smarter recon (target-aware wordlists, JSON report output) is now v0.7.4.
+
+Tests: 9 new (691 total). Against v0.7.2, the three that expect a return fail; the other six are guards that the return does not fire where it should not.
+
 ## [0.7.2] - 2026-10-09
 
 Hostnames from TLS certificates. The feature already existed: since v0.4.0 the nmap parser has run a regex over the ssl-cert script's output and harvested anything after `commonName=` or `DNS:`. It was written without a capture. `tests/fixtures/capture_tls_fixtures.sh` took one, from a throwaway certificate with six SAN entries of different kinds and from the live domain controller, and the capture showed three things wrong.

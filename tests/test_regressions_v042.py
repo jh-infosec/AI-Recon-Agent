@@ -135,11 +135,18 @@ def test_finish_tool_sets_completed(name):
     asserted `completed = True` fell within 200 characters of the branch
     opening, which broke the moment v0.4.3 inserted payload validation in
     between. A test that measures proximity is measuring formatting.
+
+    It then measured it again: a 2500-character window, which broke when
+    v0.7.3 put the coverage-gate return inside the branch. The branch now runs
+    from its opening to the first line after it, the console echo of an
+    ordinary tool call. (test_v073.py drives the real loop with a fake client,
+    which is the behavioural version of this check.)
     """
     src = (Path(__file__).parent.parent / name).read_text(encoding="utf-8")
     finish = "finish_session" if name == "agent.py" else "finish_hunt"
     idx = src.index(f'if block.name == "{finish}":')
-    branch = src[idx:idx + 2500]
+    end = src.index("print(console.tool_call(block.name", idx)
+    branch = src[idx:end]
     assert "completed = True" in branch
     # and validation must come first, or an empty payload still counts as done
     assert branch.index("validate_") < branch.index("completed = True")

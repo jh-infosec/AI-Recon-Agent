@@ -136,7 +136,14 @@ runs, which moves to v0.6.0.
 - No separate TLS tool: nmap's default scripts already read every
   certificate, RDP included.
 
-## v0.7.3 - smarter recon
+## v0.7.3 - an early finish is handed back (shipped)
+
+- A finish with never-attempted steps is returned once, with the list.
+- Recorded in both reports and on the console, even when the session then
+  completes.
+- The agent loop is tested by driving it with a fake client.
+
+## v0.7.4 - smarter recon
 
 - Target-aware wordlist generation from fingerprint output, subject to the
   v0.3.1 path rules for anything written to disk.

@@ -1,6 +1,6 @@
 # ai-recon-agent
 
-**v0.7.2**
+**v0.7.3**
 
 ai-recon-agent is a small security study kit with two halves: a **red-team
 recon agent** for practicing enumeration on machines you're authorized to
@@ -168,7 +168,7 @@ architecture.md           - design principles, constraints, cleared defects
 ```bash
 pip install -r requirements-dev.txt
 ruff check .      # lint
-python -m pytest -q  # run the full suite (682 tests)
+python -m pytest -q  # run the full suite (691 tests)
 pip-audit -r requirements.txt   # supply-chain audit
 ```
 
@@ -214,6 +214,14 @@ itself finished before it was. A web check counts as satisfied only when the
 tool produced usable output: a scan that was blocked, timed out, or came back
 empty is reported as a gap (BLOCKED / PARTIAL / EMPTY), not a pass, because
 each needs a different response and none of them is "redo the step".
+
+If the model calls finish while a step was never attempted at all (a
+discovered hostname never fuzzed, a directory search never sent), the finish
+is handed back once with the list, so it can do the work while it still can.
+Only never-attempted steps count: a scan that ran and came back empty or
+blocked is not sent back to be repeated. The return is noted on the console
+and in both reports, so an exit 0 that needed one does not look the same as
+one that did not.
 
 An empty scan is the exception worth knowing. It passes when something
 actually fetched a page from that port, because a site that was reached and
