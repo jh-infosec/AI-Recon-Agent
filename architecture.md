@@ -682,6 +682,18 @@ returning means rediscovering the same attack surface and paying for it again.
 session, most of them irrelevant to the box in hand. `lookup()` exists and is
 not used on the prompt path.
 
+Measured in v0.7.4, this is about 500 tokens a turn, and since prompt caching
+it is billed at a tenth of that on every turn after the first. It is a prompt
+quality question now, not a cost one.
+
+### The prompt cache expires after five minutes
+
+The cache's lifetime is refreshed by each read, so an ordinary session keeps
+it warm. A single turn whose tools run longer than five minutes in total
+(several fuzzers near their `maxtime`) lets it lapse, and the next turn pays a
+fresh write. That costs money, never correctness. The one-hour cache would
+avoid it at twice the write price; not worth it at current turn lengths.
+
 ### Log parsers read whole files
 
 `auth_summary` and `web_log_summary` call `_read_text`, while `read_lines` and

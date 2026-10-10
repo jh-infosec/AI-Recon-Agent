@@ -36,6 +36,7 @@ import sys
 
 import anthropic
 
+import caching
 import completeness
 import console
 import repeats
@@ -282,12 +283,16 @@ def main():
 
     for _turn in range(MAX_TURNS):
         def _create(msgs=messages):
+            # Two cache breakpoints: the system prompt (which caches the tools
+            # with it) and the end of the conversation so far. The second is
+            # placed on a copy, so the history never accumulates markers. See
+            # caching.py for why, and for what it saves.
             return client.messages.create(
                 model=MODEL,
                 max_tokens=MAX_TOKENS,
-                system=SYSTEM_PROMPT,
+                system=caching.cached_system(SYSTEM_PROMPT),
                 tools=TOOLS,
-                messages=msgs,
+                messages=caching.with_cache_breakpoint(msgs),
             )
 
         def _note_retry(attempt, delay, exc):

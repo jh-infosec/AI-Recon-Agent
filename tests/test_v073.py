@@ -112,10 +112,11 @@ def run_session(tmp_path, monkeypatch, capsys):
         monkeypatch.setattr(report, "REPORTS_DIR", tmp_path / "reports")
         (tmp_path / "reports").mkdir()
         root = tmp_path / "state"
-        monkeypatch.setattr(agent.state_mod, "load_latest",
-                            lambda t: state.load_latest(t, root))
-        monkeypatch.setattr(agent.state_mod, "save_snapshot",
-                            lambda *a: state.save_snapshot(*a, root=root))
+        # agent.state_mod IS the state module, so the originals are captured
+        # first: patching and then calling state.load_latest would recurse.
+        load, save = state.load_latest, state.save_snapshot
+        monkeypatch.setattr(agent.state_mod, "load_latest", lambda t: load(t, root))
+        monkeypatch.setattr(agent.state_mod, "save_snapshot", lambda *a: save(*a, root=root))
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-not-a-key")
         monkeypatch.setattr(sys, "argv", ["agent.py", "--target", "10.10.10.10"])
         code = 0

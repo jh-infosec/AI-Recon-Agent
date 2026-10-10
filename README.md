@@ -1,6 +1,6 @@
 # ai-recon-agent
 
-**v0.7.3**
+**v0.7.4**
 
 ai-recon-agent is a small security study kit with two halves: a **red-team
 recon agent** for practicing enumeration on machines you're authorized to
@@ -136,7 +136,8 @@ version.py                - single source of the project version
 parsers.py                - raw tool output -> structured objects
 surface.py                - attack surface model + methodology coverage gate
 state.py                  - per-target memory across sessions (path-locked)
-telemetry.py              - per-turn token counts and cost estimate
+telemetry.py              - per-turn token counts and cost estimate, cache-aware
+caching.py                - prompt-cache breakpoints for both agent loops
 console.py                - coloured output, command echo, finding highlights
 completeness.py           - validates finish-tool payloads
 apiclient.py              - API retry with backoff
@@ -168,7 +169,7 @@ architecture.md           - design principles, constraints, cleared defects
 ```bash
 pip install -r requirements-dev.txt
 ruff check .      # lint
-python -m pytest -q  # run the full suite (691 tests)
+python -m pytest -q  # run the full suite (707 tests)
 pip-audit -r requirements.txt   # supply-chain audit
 ```
 
@@ -249,3 +250,9 @@ Each session makes multiple Claude API calls (one per tool-use turn). This
 uses your own `ANTHROPIC_API_KEY` and bills to your own Anthropic account -
 check current pricing at https://www.anthropic.com/pricing before running
 it against a long session or a box with a lot of open services.
+
+Every turn re-sends the conversation so far, so most of a session's input is
+text the API has already seen. Both agents use prompt caching, which bills
+that repeated part at a tenth of the input price; the saving grows with the
+length of the session. The cost line at the end shows how much input came
+from the cache and what the session would have cost without it.

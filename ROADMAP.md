@@ -106,12 +106,17 @@ runs, which moves to v0.6.0.
 - Per-port outcomes are carried across sessions, so a prior failure does not
   launder into a pass.
 
-## v0.6.4 - playbooks
+## Playbooks (unscheduled)
 
 - Phase definitions as markdown under `playbooks/`, loaded on demand.
 - Knowledge injection scoped by `lookup()` against current findings rather
   than the whole table every turn.
 - The system prompt shrinks to the parts that are actually invariant.
+
+No longer a cost item. Measured in v0.7.4, the knowledge table is about 500
+tokens of a 42,000-token session; prompt caching addressed the actual cost.
+Worth doing only if a smaller, phase-scoped prompt makes the model behave
+better, which is a question for a live comparison, not a token count.
 
 ## v0.7.0 - anonymous AD enumeration (shipped)
 
@@ -143,7 +148,14 @@ runs, which moves to v0.6.0.
   completes.
 - The agent loop is tested by driving it with a fake client.
 
-## v0.7.4 - smarter recon
+## v0.7.4 - prompt caching (shipped)
+
+- Two cache breakpoints per request, the conversation one on a per-request
+  copy so the four-breakpoint limit can never be reached.
+- Cost estimate prices cache reads and writes separately and reports the
+  uncached comparison.
+
+## v0.7.5 - smarter recon
 
 - Target-aware wordlist generation from fingerprint output, subject to the
   v0.3.1 path rules for anything written to disk.

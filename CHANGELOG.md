@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.7.4] - 2026-10-10
+
+Added: **prompt caching, in both agents.** The roadmap's plan for cost was playbooks, on the theory that injecting the whole knowledge table every turn was the expense. Measured before building, the table is about 500 tokens. The second live AD run sent 41,880 input tokens over five turns, and nearly all of it was the conversation itself: every turn re-sends every earlier tool result. Playbooks would have saved about 6%.
+
+Caching bills a repeated prefix at a tenth of the input price, after a one-off write at 1.25x. Each request now carries two breakpoints: one on the system prompt (which caches the tool definitions with it) and one on the last block of the conversation, so the next turn reads everything before it back cheaply and pays full price only for what is new. Rough arithmetic on that five-turn run puts the input cost at under half and the session at about a third cheaper overall; output tokens are unchanged, and the saving grows with session length. The live number will say.
+
+The API rejects a request carrying more than four breakpoints, so the conversation breakpoint is placed on a copy of the message list at request time. Marking each turn as it was appended to the history would have failed every session within a few turns. The prompt text is identical with or without caching; a breakpoint is billing metadata.
+
+Changed: **the cost estimate counts cached tokens.** With caching on, the API's `input_tokens` covers only the uncached remainder, with cache reads and writes reported separately. Summing `input_tokens` alone, as telemetry did, would have dropped every cached token from both the token count and the bill: an under-report, the one direction an estimate here is never allowed to err. Each kind is now priced on its own (writes 1.25x, reads 0.1x; some newer models read cheaper, and the higher figure is kept so the estimate errs high). `input_tokens` in the summary remains the total the model was sent. The console, the Markdown report and the HTML report show how much came from the cache and what the session would have cost without it.
+
+Fixed: the agent loop tests in `test_v073.py` patched `state.load_latest` with a lambda that called `state.load_latest`, which by then was the lambda, so every scripted session quietly logged "could not read prior state" and started cold. The originals are captured before patching.
+
+Moved: playbooks stay on the roadmap, judged on prompt clarity, not cost. Smarter recon is now v0.7.5.
+
+Tests: 16 new (707 total), including a scripted eleven-turn session asserting every request carries exactly two breakpoints and that only the newest message is ever marked.
+
 ## [0.7.3] - 2026-10-09
 
 Added: **the coverage gate hands an early finish back, once.** On the first live run with the AD tools the model wrote "I have a solid, complete picture" and called finish_session with port 80 open and two hostnames never fuzzed. The gate caught it after the session had ended: exit 3. The next run, given those gaps in its kickoff summary, did the work and exited 0. The model could close the gap; nothing told it while it still could.

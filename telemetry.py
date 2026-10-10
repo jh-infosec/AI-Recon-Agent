@@ -18,9 +18,15 @@ under-reporting a bill. Override with RECON_AGENT_PRICE_IN /
 RECON_AGENT_PRICE_OUT (dollars per million tokens) and verify against
 https://www.anthropic.com/pricing before trusting any number here.
 
-Cache reads and writes are not modelled. This project sends a fresh prompt
-each turn and does not use prompt caching, so the simple input/output split
-is accurate for its own usage; it would not be for a caching client.
+Cache reads and writes ARE modelled, since v0.7.4 turned on prompt caching
+(see caching.py). The API reports three input counts per call: tokens read
+from the cache, tokens written to it, and the uncached remainder. They are
+billed differently, so the estimate prices each one: writes at 1.25x the input
+rate and reads at 0.1x, the published 5-minute-cache multipliers for Sonnet 5.
+Some newer models read cheaper still; 0.1x is kept as the default so the
+estimate errs high, for the same reason as the price table. `input_tokens` in
+the summary is the TOTAL input across all three, so it means what it always
+meant: how much text the model was sent.
 """
 
 import os
@@ -35,6 +41,10 @@ PRICES = {
     "claude-opus-4-6": (5.00, 25.00),
 }
 FALLBACK_PRICE = (5.00, 25.00)  # assume the expensive tier if unknown
+
+# Multipliers on the input price for the 5-minute prompt cache.
+CACHE_WRITE_MULT = 1.25
+CACHE_READ_MULT = 0.10
 
 
 def prices_for(model: str) -> tuple:
@@ -54,7 +64,9 @@ def prices_for(model: str) -> tuple:
 @dataclass
 class Telemetry:
     model: str
-    turns: list = field(default_factory=list)   # [{"turn","input","output"}]
+    # [{"turn", "input", "output", "cache_write", "cache_read"}], where
+    # "input" is the UNCACHED remainder, as the API reports it.
+    turns: list = field(default_factory=list)
 
     def record(self, usage) -> dict:
         """
@@ -74,13 +86,28 @@ class Telemetry:
             "turn": len(self.turns) + 1,
             "input": _get("input_tokens"),
             "output": _get("output_tokens"),
+            "cache_write": _get("cache_creation_input_tokens"),
+            "cache_read": _get("cache_read_input_tokens"),
         }
         self.turns.append(entry)
         return entry
 
     @property
-    def total_input(self) -> int:
+    def uncached_input(self) -> int:
         return sum(t["input"] for t in self.turns)
+
+    @property
+    def cache_write(self) -> int:
+        return sum(t.get("cache_write", 0) for t in self.turns)
+
+    @property
+    def cache_read(self) -> int:
+        return sum(t.get("cache_read", 0) for t in self.turns)
+
+    @property
+    def total_input(self) -> int:
+        """Everything the model was sent, cached or not."""
+        return self.uncached_input + self.cache_write + self.cache_read
 
     @property
     def total_output(self) -> int:
@@ -88,7 +115,15 @@ class Telemetry:
 
     def estimated_cost(self) -> float:
         pin, pout = prices_for(self.model)
-        return (self.total_input / 1_000_000) * pin + (self.total_output / 1_000_000) * pout
+        input_cost = (self.uncached_input
+                      + self.cache_write * CACHE_WRITE_MULT
+                      + self.cache_read * CACHE_READ_MULT) * pin
+        return (input_cost + self.total_output * pout) / 1_000_000
+
+    def uncached_cost(self) -> float:
+        """What the same tokens would have cost with no cache at all."""
+        pin, pout = prices_for(self.model)
+        return (self.total_input * pin + self.total_output * pout) / 1_000_000
 
     def summary(self) -> dict:
         return {
@@ -96,6 +131,9 @@ class Telemetry:
             "turns": len(self.turns),
             "input_tokens": self.total_input,
             "output_tokens": self.total_output,
+            "cache_read_tokens": self.cache_read,
+            "cache_write_tokens": self.cache_write,
             "estimated_cost_usd": round(self.estimated_cost(), 4),
+            "uncached_cost_usd": round(self.uncached_cost(), 4),
             "per_turn": list(self.turns),
         }

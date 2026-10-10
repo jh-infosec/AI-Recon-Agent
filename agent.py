@@ -39,6 +39,7 @@ import sys
 
 import anthropic
 
+import caching
 import completeness
 import console
 import parsers
@@ -459,12 +460,16 @@ def main():
 
     for _turn in range(MAX_TURNS):
         def _create(msgs=messages):
+            # Two cache breakpoints: the system prompt (which caches the tools
+            # with it) and the end of the conversation so far. The second is
+            # placed on a copy, so the history never accumulates markers. See
+            # caching.py for why, and for what it saves.
             return client.messages.create(
                 model=MODEL,
                 max_tokens=MAX_TOKENS,
-                system=SYSTEM_PROMPT,
+                system=caching.cached_system(SYSTEM_PROMPT),
                 tools=TOOLS,
-                messages=msgs,
+                messages=caching.with_cache_breakpoint(msgs),
             )
 
         def _note_retry(attempt, delay, exc):
@@ -770,6 +775,11 @@ def main():
         f"{t['turns']} turns, {t['input_tokens']:,} in / {t['output_tokens']:,} out "
         f"tokens, estimated {cost}"
     )))
+    if t.get("cache_read_tokens"):
+        print(console.note(
+            f"{t['cache_read_tokens']:,} of the input tokens were read from the prompt "
+            f"cache; without it this session would have cost about "
+            f"${t['uncached_cost_usd']:.4f}"))
     print(console.note("cost is an estimate - verify at https://www.anthropic.com/pricing"))
     print("\n" + console.agent("agent", "Done. Reports:"))
     print(console.note(str(report.path)))
