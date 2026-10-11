@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.7.5] - 2026-10-11
+
+Added: **a JSON report beside the Markdown and HTML, for both agents.** The next two roadmap items need a report a program can read: v0.8.0 feeds a recon report and a hunt report of the same box to the model, and v1.0.0's findings envelope is built from the same data. Parsing either back out of Markdown would repeat the mistake behind every parser bug this project has had, a format assumed rather than defined.
+
+The file holds the whole session as data: a versioned header (`schema`, `schema_version`), whether the session was complete on the same two conditions the exit code uses, the finish payload, every coverage check with its state, the attack surface, the change since the last session, the cost including the cache, and the full timeline of tool calls and analysis in order. Each tool call keeps its parsed result whole; raw stdout and stderr are capped (20,000 and 2,000 characters, flagged when cut), since the Markdown report keeps them in full. It is written atomically, so a crash never leaves half a file.
+
+It also carries a plain statement of which fields came from the target. v0.8.0 will put this file in front of a model, and banners, paths and log lines in it are evidence to analyse, never instructions.
+
+Fixed: **the new report would have been published.** `.gitignore` listed `reports/*.md` and `reports/*.html` by extension, so the first `git add -A` after a session would have committed the JSON, with the target's ports, paths and banners, to a public repository. The rule now covers everything in `reports/` except the placeholder, and a test asks git itself whether each report name is ignored.
+
+Moved: target-aware wordlists, the other half of the old v0.7.5, are now v0.7.6.
+
+Tests: 21 new (728 total).
+
 ## [0.7.4] - 2026-10-10
 
 Added: **prompt caching, in both agents.** The roadmap's plan for cost was playbooks, on the theory that injecting the whole knowledge table every turn was the expense. Measured before building, the table is about 500 tokens. The second live AD run sent 41,880 input tokens over five turns, and nearly all of it was the conversation itself: every turn re-sends every earlier tool result. Playbooks would have saved about 6%.

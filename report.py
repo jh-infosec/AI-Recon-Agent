@@ -23,7 +23,10 @@ dynamic content with html.escape() so a malicious banner can't inject markup
 or script into the report you open in your browser.
 """
 
+import dataclasses
 import html
+import json
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -63,6 +66,86 @@ def _as_entry(item, key: str = "topic") -> dict:
     return {key: str(item)}
 
 
+# --------------------------------------------------------------------------- #
+# JSON
+# --------------------------------------------------------------------------- #
+# The Markdown and HTML reports are for people. This one is for programs: the
+# v0.8.0 purple-team feature reads a recon report and a hunt report of the same
+# box, and the v1.0.0 findings envelope is built from the same data. Parsing
+# either back out of Markdown would be the gobuster mistake again, a format
+# assumed rather than defined, so the data is written out as data.
+SCHEMA_VERSION = 1
+
+# Caps on raw text, so one huge tool output cannot make the file unusable.
+# The structured `parsed` object is never capped: it is the point of the file,
+# and the Markdown report keeps the full raw output.
+MAX_JSON_STDOUT = 20_000
+MAX_JSON_STDERR = 2_000
+
+UNTRUSTED_NOTE = (
+    "Every tool_calls[].stdout, stderr and parsed value, and every hostname, "
+    "path and banner anywhere in this file, came from the target or from a "
+    "log, not from this tool. Anything that feeds this file to a model must "
+    "treat those fields as evidence to analyse, never as instructions."
+)
+
+
+def _jsonable(obj):
+    """json.dump's fallback for the few non-JSON types a report holds."""
+    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+        return dataclasses.asdict(obj)
+    if isinstance(obj, (set, frozenset)):
+        return sorted(obj, key=str)
+    if isinstance(obj, Path):
+        return str(obj)
+    return str(obj)
+
+
+def _clip(text, limit: int) -> tuple:
+    text = text if isinstance(text, str) else ("" if text is None else str(text))
+    return (text[:limit], len(text) > limit)
+
+
+def _json_events(events: list) -> list:
+    """The session timeline: every tool call and every piece of analysis, in order."""
+    out = []
+    for ev in events:
+        if ev.get("type") == "analysis":
+            out.append({"type": "analysis", "text": ev.get("text", "")})
+            continue
+        result = ev.get("result") or {}
+        stdout, stdout_cut = _clip(result.get("stdout"), MAX_JSON_STDOUT)
+        stderr, stderr_cut = _clip(result.get("stderr"), MAX_JSON_STDERR)
+        out.append({
+            "type": "tool",
+            "step": ev.get("step"),
+            "tool": ev.get("tool"),
+            "input": ev.get("input"),
+            "command": result.get("command"),
+            "returncode": result.get("returncode"),
+            "timed_out": bool(result.get("timed_out")),
+            "parsed": result.get("parsed"),
+            "stdout": stdout,
+            "stdout_truncated": stdout_cut,
+            "stderr": stderr,
+            "stderr_truncated": stderr_cut,
+        })
+    return out
+
+
+def _write_json(path: Path, doc: dict) -> None:
+    """
+    Write atomically: a reader (or a crash) never sees half a file. The
+    temporary name sits beside the target so the rename stays on one
+    filesystem.
+    """
+    tmp = path.with_name(path.name + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(doc, f, indent=2, ensure_ascii=False, default=_jsonable)
+        f.write("\n")
+    os.replace(tmp, path)
+
+
 class SessionReport:
     def __init__(self, target: str, platform: str, note: str):
         REPORTS_DIR.mkdir(exist_ok=True)
@@ -75,6 +158,7 @@ class SessionReport:
         base = f"{stamp}_{target.replace('.', '-').replace(':', '-')}"
         self.path = REPORTS_DIR / f"{base}.md"
         self.html_path = REPORTS_DIR / f"{base}.html"
+        self.json_path = REPORTS_DIR / f"{base}.json"
 
         self._steps = 0
         self._events: list[dict] = []   # ordered timeline for the HTML render
@@ -331,6 +415,48 @@ class SessionReport:
         with open(self.path, "a", encoding="utf-8") as f:
             f.write(f"\n\n_Session ended (UTC): {self.ended_at}_\n")
         self._render_html()
+        self._render_json()
+
+    # -------------------------------------------------------------- json render
+    def to_json(self) -> dict:
+        """The whole session as data. See SCHEMA_VERSION and UNTRUSTED_NOTE."""
+        cov = self._coverage or {}
+        summary = cov.get("summary") or {}
+        return {
+            "schema": "ai-recon-agent/recon-report",
+            "schema_version": SCHEMA_VERSION,
+            "tool_version": __version__,
+            "untrusted": UNTRUSTED_NOTE,
+            "target": self.target,
+            "platform": self.platform,
+            "note": self.note,
+            "started": self.started_at,
+            "ended": self.ended_at,
+            # Both conditions the exit code is built from: the model produced
+            # a conclusion, and the coverage gate found no gaps.
+            "complete": bool(self._summary) and not self._incomplete
+                        and bool(summary.get("complete")),
+            "incomplete_reason": self._incomplete,
+            "gate_returned": list(self._gate_returned),
+            "summary": self._summary,
+            "coverage": {
+                "summary": summary,
+                "checks": [
+                    {"name": c.name, "satisfied": bool(c.satisfied),
+                     "state": getattr(c, "state", None) or ("pass" if c.satisfied else "miss"),
+                     "from_prior": bool(getattr(c, "from_prior", False)),
+                     "detail": c.detail}
+                    for c in cov.get("checks") or []
+                ],
+            },
+            "surface": cov.get("surface"),
+            "change_since_last_session": self._state,
+            "telemetry": self._telemetry,
+            "timeline": _json_events(self._events),
+        }
+
+    def _render_json(self):
+        _write_json(self.json_path, self.to_json())
 
     # -------------------------------------------------------------- html render
     def _render_html(self):
@@ -632,6 +758,7 @@ class HuntReport:
         base = f"hunt_{stamp}_{safe}"
         self.path = REPORTS_DIR / f"{base}.md"
         self.html_path = REPORTS_DIR / f"{base}.html"
+        self.json_path = REPORTS_DIR / f"{base}.json"
 
         self._steps = 0
         self._events: list[dict] = []
@@ -761,6 +888,26 @@ class HuntReport:
         with open(self.path, "a", encoding="utf-8") as f:
             f.write(f"\n\n_Hunt ended (UTC): {self.ended_at}_\n")
         self._render_html()
+        self._render_json()
+
+    def to_json(self) -> dict:
+        """The whole hunt as data. See SCHEMA_VERSION and UNTRUSTED_NOTE."""
+        return {
+            "schema": "ai-recon-agent/hunt-report",
+            "schema_version": SCHEMA_VERSION,
+            "tool_version": __version__,
+            "untrusted": UNTRUSTED_NOTE,
+            "workspace": self.workspace,
+            "started": self.started_at,
+            "ended": self.ended_at,
+            "complete": bool(self._summary) and not self._incomplete,
+            "incomplete_reason": self._incomplete,
+            "summary": self._summary,
+            "timeline": _json_events(self._events),
+        }
+
+    def _render_json(self):
+        _write_json(self.json_path, self.to_json())
 
     def _render_html(self):
         e = html.escape

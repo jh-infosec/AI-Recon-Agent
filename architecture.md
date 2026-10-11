@@ -973,6 +973,14 @@ source. One of them asserted a line fell within 2500 characters of another
 and broke on the first change to the branch. test_v073.py now runs main()
 against a scripted fake client.
 
+Fixed in v0.7.5.
+
+**The ignore rule listed extensions, not the directory.** `reports/*.md` and
+`reports/*.html` kept two formats out of git; the JSON report added in the
+same release would have gone straight in. Ignore rules for output that
+contains target data name the directory, never the file types currently in
+it.
+
 ## Accepted Designs
 
 Decided, not yet built. Recorded so the implementation has something to be

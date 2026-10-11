@@ -3,8 +3,10 @@ __pycache__/
 .env
 venv/
 .venv/
-reports/*.md
-reports/*.html
+# Everything a session writes, whatever the format: v0.7.5 added .json, and a
+# per-extension list would have published it on the first `git add -A`.
+reports/*
+!reports/.gitkeep
 .ruff_cache/
 .pytest_cache/
 config/targets.yaml

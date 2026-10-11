@@ -155,11 +155,16 @@ better, which is a question for a live comparison, not a token count.
 - Cost estimate prices cache reads and writes separately and reports the
   uncached comparison.
 
-## v0.7.5 - smarter recon
+## v0.7.5 - JSON report (shipped)
 
-- Target-aware wordlist generation from fingerprint output, subject to the
-  v0.3.1 path rules for anything written to disk.
-- JSON report output alongside Markdown and HTML.
+- Both agents write a versioned JSON report beside the Markdown and HTML, the
+  input v0.8.0 and v1.0.0 build on.
+- Every file in `reports/` is git-ignored, not just two extensions.
+
+## v0.7.6 - target-aware wordlists
+
+- Wordlist generation from fingerprint output, subject to the v0.3.1 path
+  rules for anything written to disk.
 
 ## v0.8.0 - purple
 

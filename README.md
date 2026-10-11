@@ -1,6 +1,6 @@
 # ai-recon-agent
 
-**v0.7.4**
+**v0.7.5**
 
 ai-recon-agent is a small security study kit with two halves: a **red-team
 recon agent** for practicing enumeration on machines you're authorized to
@@ -46,6 +46,10 @@ the tooling is "just recon." Keep this pointed at practice environments.
    is nice to read in a browser and to hand to someone else; writing the
    report up in your own words afterward is a genuinely useful exercise
    (client-facing report writing is a real, undervalued pentest skill).
+   A third file, JSON, holds the same session as data (every tool call with
+   its parsed result, the conclusion, the coverage checks, the cost) for
+   other programs to read. Everything in `reports/` is git-ignored: a report
+   is a list of a target's ports, paths and banners.
 
 ## What it deliberately does NOT do
 
@@ -147,7 +151,7 @@ knowledge.py              - recon finding -> MITRE ATT&CK -> HTB Academy lookup
 detections.py             - hunt log-signal -> MITRE ATT&CK lookup
 tools/recon.py            - nmap / whatweb / gobuster / ffuf / dns / smb / ldap / searchsploit
 tools/loganalysis.py      - read-only, path-locked log tools
-report.py                 - SessionReport (recon) + HuntReport (blue) -> MD + HTML
+report.py                 - SessionReport (recon) + HuntReport (blue) -> MD + HTML + JSON
 config/targets.example.yaml - template; copy to targets.yaml (gitignored)
 samples/                  - synthetic logs for the hunt agent (safe to run)
 reports/                  - generated reports land here (git-ignored)
@@ -169,7 +173,7 @@ architecture.md           - design principles, constraints, cleared defects
 ```bash
 pip install -r requirements-dev.txt
 ruff check .      # lint
-python -m pytest -q  # run the full suite (707 tests)
+python -m pytest -q  # run the full suite (728 tests)
 pip-audit -r requirements.txt   # supply-chain audit
 ```
 
