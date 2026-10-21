@@ -981,6 +981,18 @@ same release would have gone straight in. Ignore rules for output that
 contains target data name the directory, never the file types currently in
 it.
 
+Added in v0.8.0.
+
+**purple.py checks quotes, not judgement.** The obvious way to make a
+narrative of two reports trustworthy is a second model reviewing the first,
+which this project ruled out: the faculty that invents a connection is the
+one being asked to spot it. Instead every claim of "this step showed up in
+the logs" must carry a quote, and the quote is matched against the recorded
+hunt output. That catches the specific failure that matters, a log line that
+does not exist, deterministically. It does not catch a real line attributed
+to the wrong step; the per-step timestamps added in schema 2 are there for
+the student to check that, and for a future version to check in code.
+
 ## Accepted Designs
 
 Decided, not yet built. Recorded so the implementation has something to be

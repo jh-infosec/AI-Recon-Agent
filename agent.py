@@ -44,6 +44,7 @@ import completeness
 import console
 import parsers
 import repeats
+import report as report_mod
 import state as state_mod
 from apiclient import call_with_retry, explain
 from knowledge import format_for_prompt
@@ -587,6 +588,10 @@ def main():
                     })
                     continue
 
+                # When the call ran, in UTC. The purple-team report lines a
+                # recon step up against the log lines it produced, and a step
+                # with no time can only be matched by guessing.
+                started_at = report_mod.utc_now()
                 try:
                     result = dispatch_tool(block.name, block.input, args.target)
                 except Exception as e:  # noqa: BLE001
@@ -597,6 +602,8 @@ def main():
                         "stderr": str(e),
                         "timed_out": False,
                     }
+                result["started_at"] = started_at
+                result["finished_at"] = report_mod.utc_now()
 
                 # Show the exact invocation, then whatever it actually found.
                 if result.get("command") and result["command"] != "n/a":

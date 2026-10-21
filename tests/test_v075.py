@@ -131,7 +131,7 @@ def test_no_temporary_file_is_left_behind(session):
 def test_the_header_identifies_the_format(session):
     _, doc, _ = session(list(COMPLETE))
     assert doc["schema"] == "ai-recon-agent/recon-report"
-    assert doc["schema_version"] == report.SCHEMA_VERSION == 1
+    assert doc["schema_version"] == report.SCHEMA_VERSION == 2   # 2 since v0.8.0
     assert doc["tool_version"] == agent.__version__
     assert doc["target"] == "10.10.10.10" and doc["platform"] == "homelab"
     assert doc["started"] and doc["ended"]
@@ -170,6 +170,9 @@ def test_parsed_results_are_kept_whole(session):
     nmap = doc["timeline"][0]
     assert nmap["parsed"] == NMAP
     assert nmap["command"] == "fake run_nmap" and nmap["returncode"] == 0
+    # Since v0.8.0 the loop stamps every call, for purple.py to line up.
+    assert nmap["started_at"] and nmap["finished_at"]
+    assert nmap["started_at"] <= nmap["finished_at"]
 
 
 def test_the_conclusion_coverage_and_surface_are_present(session):

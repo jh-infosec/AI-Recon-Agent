@@ -166,11 +166,15 @@ better, which is a question for a live comparison, not a token count.
 - Wordlist generation from fingerprint output, subject to the v0.3.1 path
   rules for anything written to disk.
 
-## v0.8.0 - purple
+## v0.8.0 - purple (shipped, awaiting a live pair)
 
 - Feed a recon report and a hunt report of the same box to the model and have
   it narrate the engagement from both sides: what was done, what it looked
   like in the logs, and what would have detected it earlier.
+- Every step answered and every evidence quote checked against the hunt
+  record, in code.
+- Still to do: run it on a real pair from the homelab VM and keep that pair
+  as fixtures.
 
 This is the feature with no counterpart in the commercial tools this project
 takes its shape from, and it is the reason for keeping both halves in one

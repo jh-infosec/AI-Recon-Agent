@@ -40,6 +40,7 @@ import caching
 import completeness
 import console
 import repeats
+import report as report_mod
 from apiclient import call_with_retry, explain
 from detections import format_for_prompt
 from report import HuntReport
@@ -393,6 +394,10 @@ def main():
                     })
                     continue
 
+                # When the call ran, in UTC. The purple-team report lines a
+                # recon step up against the log lines it produced, and a step
+                # with no time can only be matched by guessing.
+                started_at = report_mod.utc_now()
                 try:
                     result = dispatch_tool(block.name, block.input, args.logs)
                 except Exception as e:  # noqa: BLE001
@@ -400,6 +405,8 @@ def main():
                         "command": "n/a", "returncode": None, "stdout": "",
                         "stderr": str(e), "timed_out": False,
                     }
+                result["started_at"] = started_at
+                result["finished_at"] = report_mod.utc_now()
 
                 if result.get("command") and result["command"] != "n/a":
                     print(console.command(result["command"]))

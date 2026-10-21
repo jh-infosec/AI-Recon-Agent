@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.8.0] - 2026-10-14
+
+Added: **`purple.py`, one engagement told from both sides.** Give it the JSON report of a recon session against a box and the JSON report of a hunt over that box's logs, and it walks the engagement step by step: each recon action beside the log lines it left, or marked as a blind spot, with what would have caught it. It ends with detection ideas for the biggest gaps. Markdown, HTML and JSON output, like the other two.
+
+Two rules keep it honest, and both are code, not prompt:
+
+- **Every recon step must be answered,** as seen or not seen. A step the model skipped is not a step that went unnoticed, and the report would otherwise present an omission as a blind spot. A missing, duplicated or invented step number is sent back.
+- **Evidence is quoted, and the quote is checked.** A step marked as seen must quote the log line that shows it, and every line of the quote must appear verbatim (whitespace aside) in the hunt record. A model asked to connect two stories will find connections; this checks that the connection is in the record. An unverified quote is returned once; if it survives, it is kept, labelled *unproven* in every output, and the run exits 3. This is the approach ROADMAP.md's "Not planned" section asked for in place of a second model: check the report against recorded tool results.
+
+Quotes are never restyled. The model's prose gets the house style (no long dashes), but a quote is a log line, and rewriting it would falsify it and fail its own check.
+
+The model answers through a forced tool call, with prompt caching. Everything from the two reports goes into the prompt inside data tags with an instruction never to follow text found there, because some of it was written by the target. `purple.py` imports nothing that reaches the network and has no allowlist check, because it reads two local files: a test asserts it imports no recon wrapper, subprocess, socket or safety module.
+
+Changed: **JSON reports are schema 2.** Every tool call now carries `started_at` and `finished_at`, recorded by both agent loops around each call, so a recon step can be lined up with the log lines it produced. `purple.py` still reads schema 1 reports, matches on content alone, and says so in the output.
+
+Not yet validated live. No real recon-plus-hunt pair of the same box exists yet; the tests use a pair written by the real report writers with constructed content. The homelab run produces the real pair, which belongs in `tests/fixtures/real/purple/`.
+
+Tests: 38 new (766 total).
+
 ## [0.7.5] - 2026-10-11
 
 Added: **a JSON report beside the Markdown and HTML, for both agents.** The next two roadmap items need a report a program can read: v0.8.0 feeds a recon report and a hunt report of the same box to the model, and v1.0.0's findings envelope is built from the same data. Parsing either back out of Markdown would repeat the mistake behind every parser bug this project has had, a format assumed rather than defined.

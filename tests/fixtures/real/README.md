@@ -133,6 +133,12 @@ issuer, in both the table and the output text, to stand in for one.
 
 ## Not yet captured
 
+- A recon report and a hunt report of the SAME box, for purple.py. The tests in
+  `test_v080.py` use a pair written by the real report writers with
+  constructed content. The homelab run produces the real pair; put both JSON
+  files in `tests/fixtures/real/purple/`, after checking they contain nothing
+  you would not publish (a homelab IP and your own log lines).
+
 - A successful AXFR. Still not captured: the one live domain controller we have
   run against refused the transfer. `axfr_succeeded` now requires the SOA to
   bracket the zone inside the AXFR query's own output, which is the documented

@@ -1,6 +1,6 @@
 # ai-recon-agent
 
-**v0.7.5**
+**v0.8.0**
 
 ai-recon-agent is a small security study kit with two halves: a **red-team
 recon agent** for practicing enumeration on machines you're authorized to
@@ -132,6 +132,32 @@ hits - flagging any probe that returned HTTP 200). The bundled
 `samples/` folder contains a synthetic intrusion you can read by hand first,
 then compare against the agent's findings (see `samples/README.md`).
 
+## Purple team: both sides of one engagement
+
+Run recon against a box you own, collect that box's logs, hunt through them,
+then hand both JSON reports to `purple.py`:
+
+```bash
+python purple.py --recon reports/<recon>.json --hunt reports/hunt_<...>.json \
+                 --attacker-ip <your Kali IP>
+```
+
+It walks the engagement step by step: each recon action beside the log lines
+it left, or marked as a **blind spot** when it left none, with what would have
+caught it. That is the exercise a purple team runs, scaled down to one box.
+
+Two rules are enforced in code, not asked for:
+
+- **Every recon step is answered.** A step the model skipped is not a step
+  that went unseen, so an incomplete answer is sent back.
+- **Evidence is quoted and checked.** A step marked as seen must quote the log
+  line that shows it, and the quote must appear word for word in the hunt
+  report. A quote that does not is sent back once, then reported as
+  *unproven* and the run exits 3.
+
+It reads two files and calls the API; it never touches a target. It needs a
+box whose logs you can collect, so a homelab VM, not an HTB or THM machine.
+
 ## Project layout
 
 ```
@@ -146,6 +172,7 @@ console.py                - coloured output, command echo, finding highlights
 completeness.py           - validates finish-tool payloads
 apiclient.py              - API retry with backoff
 hunt.py                   - BLUE TEAM: threat-hunting loop over logs
+purple.py                 - PURPLE: one engagement from both sides, quotes checked
 safety.py                 - recon-side allowlist gate
 knowledge.py              - recon finding -> MITRE ATT&CK -> HTB Academy lookup
 detections.py             - hunt log-signal -> MITRE ATT&CK lookup
@@ -173,7 +200,7 @@ architecture.md           - design principles, constraints, cleared defects
 ```bash
 pip install -r requirements-dev.txt
 ruff check .      # lint
-python -m pytest -q  # run the full suite (728 tests)
+python -m pytest -q  # run the full suite (766 tests)
 pip-audit -r requirements.txt   # supply-chain audit
 ```
 

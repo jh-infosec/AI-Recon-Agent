@@ -74,7 +74,15 @@ def _as_entry(item, key: str = "topic") -> dict:
 # box, and the v1.0.0 findings envelope is built from the same data. Parsing
 # either back out of Markdown would be the gobuster mistake again, a format
 # assumed rather than defined, so the data is written out as data.
-SCHEMA_VERSION = 1
+# 2 (v0.8.0): every tool call carries started_at and finished_at, which the
+# purple-team report needs to line a recon step up with the log lines it
+# produced. Readers accept 1, with the times absent.
+SCHEMA_VERSION = 2
+
+
+def utc_now() -> str:
+    """One timestamp format for every report: ISO 8601, UTC, whole seconds."""
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 # Caps on raw text, so one huge tool output cannot make the file unusable.
 # The structured `parsed` object is never capped: it is the point of the file,
@@ -124,6 +132,8 @@ def _json_events(events: list) -> list:
             "command": result.get("command"),
             "returncode": result.get("returncode"),
             "timed_out": bool(result.get("timed_out")),
+            "started_at": result.get("started_at"),
+            "finished_at": result.get("finished_at"),
             "parsed": result.get("parsed"),
             "stdout": stdout,
             "stdout_truncated": stdout_cut,
@@ -670,6 +680,208 @@ class SessionReport:
         )
         parts.append("</div></body></html>")
 
+        self.html_path.write_text("".join(parts), encoding="utf-8")
+
+
+class PurpleReport:
+    """
+    One engagement from both sides: each recon step beside the log lines it
+    left, or marked as a blind spot. Markdown, HTML and JSON, like the others,
+    written once at the end because the analysis is a single answer, not a
+    session that runs for minutes.
+
+    Evidence quotes are log lines and are rendered exactly as quoted, escaped
+    in the HTML like every other target-derived string.
+    """
+
+    def __init__(self, recon_path: str, hunt_path: str, target, workspace):
+        REPORTS_DIR.mkdir(exist_ok=True)
+        self.recon_path = str(recon_path)
+        self.hunt_path = str(hunt_path)
+        self.target = str(target or "unknown")
+        self.workspace = str(workspace or "unknown")
+        self.started_at = utc_now()
+        self.ended_at = None
+        stamp = self.started_at.replace(":", "").replace("-", "")
+        safe = "".join(c if c.isalnum() else "-" for c in self.target)[:40]
+        base = f"purple_{stamp}_{safe}"
+        self.path = REPORTS_DIR / f"{base}.md"
+        self.html_path = REPORTS_DIR / f"{base}.html"
+        self.json_path = REPORTS_DIR / f"{base}.json"
+        self._notes: list = []
+        self._incomplete: str | None = None
+        self._unverified_returned: list = []
+        self._analysis: dict | None = None
+        self._steps: list = []
+        self._unverified: list = []
+        self._telemetry: dict | None = None
+
+    def note(self, text: str):
+        self._notes.append(text)
+
+    def log_incomplete(self, reason: str):
+        self._incomplete = reason
+
+    def log_unverified_return(self, steps: list):
+        self._unverified_returned = list(steps)
+
+    def log_analysis(self, payload: dict, steps: list, unverified: list):
+        self._analysis = payload
+        self._steps = steps
+        self._unverified = list(unverified)
+
+    # --------------------------------------------------------------- rows
+    def _rows(self) -> list:
+        """Recon steps joined to their answers, in recon order."""
+        answers = {a.get("step"): a for a in (self._analysis or {}).get("steps") or []
+                   if isinstance(a, dict)}
+        rows = []
+        for st in self._steps:
+            a = answers.get(st["step"], {})
+            seen = a.get("seen_in_logs") is True
+            rows.append({
+                **st,
+                "seen_in_logs": seen,
+                "verified": seen and st["step"] not in self._unverified,
+                "evidence": a.get("evidence") or "",
+                "note": a.get("note") or "",
+                "detection": a.get("detection") or "",
+            })
+        return rows
+
+    @staticmethod
+    def _status(row) -> str:
+        if not row["seen_in_logs"]:
+            return "blind spot"
+        return "seen" if row["verified"] else "seen (unproven)"
+
+    # --------------------------------------------------------------- output
+    def finalize(self, telemetry: dict | None = None):
+        self.ended_at = utc_now()
+        self._telemetry = telemetry
+        self._render_md()
+        self._render_html()
+        _write_json(self.json_path, self.to_json())
+
+    def to_json(self) -> dict:
+        rows = self._rows()
+        return {
+            "schema": "ai-recon-agent/purple-report",
+            "schema_version": SCHEMA_VERSION,
+            "tool_version": __version__,
+            "untrusted": UNTRUSTED_NOTE,
+            "recon_report": self.recon_path,
+            "hunt_report": self.hunt_path,
+            "target": self.target,
+            "started": self.started_at,
+            "ended": self.ended_at,
+            "complete": self._analysis is not None and not self._incomplete
+                        and not self._unverified,
+            "incomplete_reason": self._incomplete,
+            "notes": self._notes,
+            "unverified_returned": self._unverified_returned,
+            "unverified_steps": self._unverified,
+            "narrative": (self._analysis or {}).get("narrative"),
+            "steps": rows,
+            "seen": sum(1 for r in rows if r["seen_in_logs"]),
+            "blind_spots": [r["step"] for r in rows if not r["seen_in_logs"]],
+            "detection_ideas": (self._analysis or {}).get("detection_ideas") or [],
+            "telemetry": self._telemetry,
+        }
+
+    def _render_md(self):
+        doc = self.to_json()
+        out = [f"# Purple-team view: {self.target}\n",
+               f"- Recon report: `{self.recon_path}`",
+               f"- Hunt report: `{self.hunt_path}`",
+               f"- Generated (UTC): {self.ended_at}\n"]
+        for n in self._notes:
+            out.append(f"> {n}\n")
+        if self._incomplete:
+            out.append(f"## Incomplete\n\n{self._incomplete}\n")
+        if self._unverified_returned:
+            out.append("The analysis was returned once because steps "
+                       f"{', '.join(map(str, self._unverified_returned))} quoted evidence "
+                       "that is not in the hunt record.\n")
+        if doc["narrative"]:
+            out.append(f"## The engagement from both sides\n\n{doc['narrative']}\n")
+        if doc["steps"]:
+            out.append(f"## Step by step\n\n{doc['seen']} of {len(doc['steps'])} recon "
+                       f"steps left a trace in the logs.\n")
+            for r in doc["steps"]:
+                out.append(f"### Step {r['step']}: `{r['tool']}` - {self._status(r)}\n")
+                if r["command"]:
+                    out.append(f"Command: `{r['command']}`\n")
+                if r["evidence"]:
+                    fence = _fence(r["evidence"])
+                    out.append(f"{fence}\n{r['evidence']}\n{fence}\n")
+                if r["note"]:
+                    out.append(f"{r['note']}\n")
+                if r["detection"]:
+                    out.append(f"**Would have caught it:** {r['detection']}\n")
+        if doc["detection_ideas"]:
+            out.append("## Detection ideas\n")
+            for d in doc["detection_ideas"]:
+                d = _as_entry(d, "idea")
+                mitre = f" ({d.get('mitre')})" if d.get("mitre") else ""
+                out.append(f"- {d.get('idea', '')}{mitre} - data source: "
+                           f"{d.get('data_source', 'unspecified')}")
+            out.append("")
+        if self._telemetry:
+            t = self._telemetry
+            out.append(f"## Cost\n\n{t['turns']} call(s), estimated "
+                       f"${t['estimated_cost_usd']:.4f}.\n")
+        self.path.write_text("\n".join(out) + "\n", encoding="utf-8")
+
+    def _render_html(self):
+        e = html.escape
+        doc = self.to_json()
+        badge = {"seen": "sev-low", "seen (unproven)": "sev-medium", "blind spot": "sev-high"}
+        parts = [
+            "<!doctype html><html lang='en'><head><meta charset='utf-8'>",
+            "<meta name='viewport' content='width=device-width, initial-scale=1'>",
+            f"<title>Purple-team view - {e(self.target)}</title>",
+            _CSS,
+            "</head><body><div class='wrap'>",
+            "<header><h1>Purple-team view</h1><div class='meta'>",
+            f"<span class='pill'>{e(self.target)}</span>",
+            "<span class='pill platform'>purple team</span></div>",
+            f"<p class='times'>Generated {e(str(self.ended_at))} UTC</p>",
+        ]
+        for n in self._notes:
+            parts.append(f"<p class='disclaimer'>{e(n)}</p>")
+        if self._incomplete:
+            parts.append(f"<p class='disclaimer'>Incomplete: {e(self._incomplete)}</p>")
+        parts.append("</header>")
+        if doc["narrative"]:
+            parts.append("<section class='summary'><h2>The engagement from both sides</h2>"
+                         f"<p>{e(doc['narrative'])}</p></section>")
+        if doc["steps"]:
+            parts.append(f"<section class='summary'><h2>Step by step</h2><p>{doc['seen']} of "
+                         f"{len(doc['steps'])} recon steps left a trace in the logs.</p>"
+                         "<table><thead><tr><th></th><th>Step</th><th>Log evidence</th>"
+                         "<th>Would have caught it</th></tr></thead><tbody>")
+            for r in doc["steps"]:
+                st = self._status(r)
+                parts.append(
+                    f"<tr><td><span class='sev {badge[st]}'>{e(st)}</span></td>"
+                    f"<td>{r['step']}. <code>{e(r['tool'])}</code><br>"
+                    f"<code>{e(r['command'])}</code></td>"
+                    f"<td>{'<pre>' + e(r['evidence']) + '</pre>' if r['evidence'] else ''}"
+                    f"{e(r['note'])}</td><td>{e(r['detection'])}</td></tr>")
+            parts.append("</tbody></table></section>")
+        if doc["detection_ideas"]:
+            parts.append("<section class='summary'><h2>Detection ideas</h2><ul>")
+            for d in doc["detection_ideas"]:
+                d = _as_entry(d, "idea")
+                parts.append(f"<li>{e(str(d.get('idea', '')))} "
+                             f"<em>({e(str(d.get('data_source', 'unspecified')))}"
+                             + (f", {e(str(d.get('mitre')))}" if d.get("mitre") else "")
+                             + ")</em></li>")
+            parts.append("</ul></section>")
+        parts.append(f"<footer>Generated by ai-recon-agent (purple) v{__version__} - "
+                     "a study tool. Evidence quotes are checked against the hunt "
+                     "record.</footer></div></body></html>")
         self.html_path.write_text("".join(parts), encoding="utf-8")
 
 
