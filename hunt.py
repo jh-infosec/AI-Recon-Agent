@@ -212,7 +212,11 @@ TOOLS = [
                             "title": {"type": "string", "description": "What was found, in a few words."},
                             "severity": {"type": "string", "enum": ["critical", "high", "medium", "low", "info"]},
                             "mitre": {"type": "string", "description": "Technique id and name, e.g. 'T1110 - Brute Force'."},
-                            "evidence": {"type": "string", "description": "The exact log line(s) or counts that prove it."},
+                            "evidence": {"type": "string", "description": (
+                                "The exact log line(s) that prove it, copied verbatim from a "
+                                "tool result. A finding whose evidence is a summary or a count "
+                                "rather than a real log line is kept in the report but left out "
+                                "of the findings envelope, which carries observed evidence only.")},
                             "recommendation": {"type": "string", "description": "What the analyst should do about it."},
                         },
                         "required": ["title", "severity", "mitre", "evidence", "recommendation"],

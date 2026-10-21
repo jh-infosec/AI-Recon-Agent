@@ -1017,8 +1017,22 @@ wordlist gate as any list on disk.
 
 **The envelope is derived, not parallel.** It is built from each report's
 `to_json()`, so it cannot drift from the report or say anything the report
-does not. Severity is copied where it exists and marked `unrated` where it
 does not.
+
+Fixed in v0.10.1.
+
+**A format was invented when one already existed.** v0.10.0's envelope was
+designed from this repository's roadmap alone, which named a
+`findings-envelope.md` that lived in the Shadowfax repository, not here. The
+real specification had a different shape, a five-level severity ladder with
+no room for the `unrated` v0.10.0 invented, deterministic ids and a
+`validated` flag, and Shadowfax's validator would have rejected every
+envelope at its first field. The tests passed because they checked the code
+against the document written alongside it. The same lesson as every parser
+fixed in this project, at the scale of a whole format: a contract that
+already exists is captured from where it lives, not reconstructed from a
+reference to it. The emitter is now tested against Shadowfax's own validator
+whenever a checkout is present, and Shadowfax's suite ingests its output.
 
 ## Accepted Designs
 
@@ -1041,8 +1055,10 @@ architecture rather than buried in one string constant.
 
 ### Findings envelope (shipped in v0.10.0)
 
-Every report emits the shared envelope beside its other files, so Shadowfax
-can ingest them. See `findings-envelope.md`. Emitting is additive; no report
+Recon and hunt reports emit the portfolio findings envelope beside their
+other files, and Shadowfax ingests them. The specification is
+`findings-envelope.md` in the Shadowfax repository; `envelope-emitter.md`
+here records this emitter's choices. Emitting is additive; no report
 changes.
 
 ## Required Files
@@ -1055,7 +1071,7 @@ version.py          knowledge.py        detections.py       report.py
 parsers.py          surface.py          telemetry.py        apiclient.py
 caching.py          completeness.py     console.py          repeats.py
 state.py            logtime.py          purple.py           paths.py
-wordgen.py          envelope.py         findings-envelope.md
+wordgen.py          envelope.py         envelope-emitter.md
 tools/recon.py      tools/loganalysis.py
 config/targets.yaml samples/
 requirements.txt    requirements-dev.txt

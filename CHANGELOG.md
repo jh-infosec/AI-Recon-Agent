@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.10.1] - 2026-10-19
+
+Fixed: **v0.10.0's findings envelope was the wrong format.** The roadmap pointed at a `findings-envelope.md`, the file was not in this repository, and v0.10.0 wrote one. The real one already existed in the Shadowfax repository, version 1.0, with Shadowfax's `POST /findings` and validator built against it since Shadowfax v0.11. The two shapes shared almost nothing: v0.10.0 had a sixth severity (`unrated`) where the specification forbids a sixth, different field names, no deterministic ids and no `validated` flag. Shadowfax would have refused every envelope at its first field. The tests passed because they checked the code against the document written beside it.
+
+`envelope.py` is rewritten to the real specification, and v0.10.0's `findings-envelope.md` is removed in favour of `envelope-emitter.md`, which records only what this emitter chooses inside the format:
+
+- **Recon** (`host`): `open_port` (info, validated: our scan connected; the service name goes in `data.service_claimed` because it is the service describing itself), `web_path_found` (info, validated), `discovered_hostname` (info, not validated), and `anonymous_smb_enumeration` / `anonymous_ldap_search` (medium, only when anonymous access returned data). Leads and study pointers are the model's reasoning and are never findings.
+- **Hunt** (`log_workspace`): one finding per hunt finding, keyed by technique (`hunt_t1110`, `hunt_t1505_003`, or `hunt_unmapped`), with the severity the hunt gave it. Evidence must be observed: a finding goes in only if its evidence is a log line the hunt's tools returned, word for word. One whose evidence is a summary stays in the hunt report and is listed under `envelope_excluded` in its JSON. `validated` is false, because what a log line says was written by whatever produced the log. A severity off the ladder becomes `info` with the original kept in `data`.
+- **Ids** follow the specification's rule, sha256 of tool, subject, key and discriminator. A finding stated twice is emitted once, since Shadowfax refuses a whole envelope over a duplicate id.
+- **Purple** emits no envelope: its findings are conclusions drawn from two other tools' records, and the specification asks an emitter not to restate what it took from elsewhere.
+- `source.tool` is `ai-recon-agent`. Keys are checked against a copy of Shadowfax's native detector categories, which no external key may use.
+
+Tested against the real consumer: `test_v0101.py` loads Shadowfax's own `envelope.py` from a checkout (`SHADOWFAX_DIR`, or the repositories side by side) and validates both envelopes with it, converts them to Shadowfax events, and checks the copied category list is current. Without a checkout those four tests skip and a local check of every validator rule still runs.
+
+The other side: a patch for the Shadowfax repository adds two envelopes from this emitter as fixtures, and `test_api.py` ingests them over `POST /findings`. Both are accepted whole, re-ingest is idempotent, the flags and severities arrive as sent, and the technique ids resolve against the shared registry. Shadowfax needed no code change.
+
+The hunt agent's `finish_hunt` schema now says a finding without a verbatim log line will not reach the envelope.
+
+Tests: 19 new, 5 v0.10.0 envelope tests retired (860 total, 4 skipped without a Shadowfax checkout).
+
 ## [0.10.0] - 2026-10-19
 
 Three roadmap items in one release, plus a fix found on the way.

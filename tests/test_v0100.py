@@ -8,14 +8,13 @@ v0.10.0: three things at once.
      writing into site-packages. Console commands ai-recon, ai-hunt and
      ai-purple, and `ai-recon --init`.
   2. Target-aware wordlists (wordgen.py), built from the attack surface.
-  3. The findings envelope (envelope.py, findings-envelope.md), emitted
-     beside every JSON report.
+  3. The findings envelope, emitted beside every JSON report. Its v0.10.0
+     shape was wrong and was replaced in v0.10.1; see test_v0101.py.
 
 Plus one fix found on the way: the allowlist key is `authorized_targets`, and
 a file using `targets:` was refused with no hint why.
 """
 
-import json
 import os
 import stat
 import subprocess
@@ -28,7 +27,6 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import envelope  # noqa: E402
 import paths  # noqa: E402
 import report  # noqa: E402
 import safety  # noqa: E402
@@ -308,114 +306,10 @@ def test_the_agent_offers_the_tool():
 
 
 # --------------------------------------------------------------------------- #
-# 3. the findings envelope
+# 3. the findings envelope: replaced in v0.10.1, see test_v0101.py. The shape
+#    v0.10.0 tested here was home-made and did not match the specification
+#    Shadowfax already implements.
 # --------------------------------------------------------------------------- #
-HEADER = {"envelope", "envelope_version", "producer", "subject", "generated_at", "complete",
-          "source_report", "untrusted", "indicators", "findings"}
-FINDING = {"id", "title", "severity", "category", "mitre", "evidence", "recommendation",
-           "confidence", "ref"}
-
-
-def _check_shape(env):
-    assert set(env) == HEADER
-    assert env["envelope"] == "jh-infosec/findings" and env["envelope_version"] == 1
-    for f in env["findings"]:
-        assert set(f) == FINDING
-        assert f["severity"] in envelope.SEVERITIES
-
-
-def test_recon_reports_become_exposures_and_unrated_leads(tmp_path, monkeypatch):
-    monkeypatch.setattr(report, "REPORTS_DIR", tmp_path)
-    r = report.SessionReport("10.10.11.42", "htb", "t")
-    r.log_final_summary({"summary": "x" * 100, "leads": ["Try the T1190 path on /upload"],
-                         "study_pointers": [{"topic": "File upload", "mitre": "T1505.003",
-                                             "module": "File Upload Attacks"}]})
-    r.log_coverage({"services": {"80": "http nginx", "22": "ssh OpenSSH"},
-                    "hostnames": ["box.htb"]}, [], {"complete": True, "satisfied": 0,
-                                                    "total": 0})
-    r.finalize_note()
-    env = json.loads(r.findings_path.read_text(encoding="utf-8"))
-    _check_shape(env)
-    assert env["source_report"] == r.json_path.name
-    by_cat = {}
-    for f in env["findings"]:
-        by_cat.setdefault(f["category"], []).append(f)
-    assert [f["title"] for f in by_cat["exposure"]] == ["22/tcp open: ssh OpenSSH",
-                                                         "80/tcp open: http nginx"]
-    assert all(f["severity"] == "info" for f in by_cat["exposure"])
-    assert all(f["severity"] == "unrated" for f in by_cat["recon-lead"])
-    assert by_cat["recon-lead"][0]["mitre"] == ["T1190"]
-    assert by_cat["recon-lead"][1]["mitre"] == ["T1505.003"]
-    assert env["indicators"] == ["box.htb"]
-
-
-def test_hunt_findings_keep_the_severity_the_hunt_gave(tmp_path, monkeypatch):
-    monkeypatch.setattr(report, "REPORTS_DIR", tmp_path)
-    h = report.HuntReport("samples")
-    h.log_findings({"summary": "s", "iocs": ["203.0.113.66"], "next_steps": [],
-                    "findings": [
-                        {"title": "Brute force", "severity": "HIGH",
-                         "mitre": "T1110 - Brute Force", "evidence": "Failed password x6",
-                         "recommendation": "Block the IP"},
-                        {"title": "Odd", "severity": "catastrophic", "mitre": "",
-                         "evidence": "", "recommendation": ""}]})
-    h.finalize_note()
-    env = json.loads(h.findings_path.read_text(encoding="utf-8"))
-    _check_shape(env)
-    a, b = env["findings"]
-    assert a["severity"] == "high" and a["mitre"] == ["T1110"]
-    assert a["evidence"] == ["Failed password x6"] and a["recommendation"] == "Block the IP"
-    assert b["severity"] == "unrated"           # not a severity anyone defined
-    assert env["indicators"] == ["203.0.113.66"]
-    assert env["subject"] == {"kind": "log-workspace", "id": "samples"}
-
-
-def test_purple_findings_are_its_gaps():
-    doc = {"target": "192.168.92.131", "ended": "t", "complete": False, "untrusted": "u",
-           "steps": [
-               {"step": 1, "tool": "run_nmap", "command": "nmap", "seen_in_logs": True,
-                "verified": True, "evidence": "line", "detection": "d1"},
-               {"step": 2, "tool": "run_whatweb", "command": "whatweb", "seen_in_logs": False,
-                "verified": False, "evidence": "", "detection": "log UAs"},
-               {"step": 3, "tool": "run_ffuf", "command": "ffuf", "seen_in_logs": True,
-                "verified": False, "evidence": "made up", "detection": "d3"}],
-           "detection_ideas": [{"idea": "Log the Host header", "data_source": "Apache",
-                                "mitre": "T1595"}]}
-    env = envelope.from_purple(doc, "p.json")
-    _check_shape(env)
-    titles = [f["title"] for f in env["findings"]]
-    assert not any("Step 1 " in t for t in titles)            # seen and verified
-    gap = next(f for f in env["findings"] if f["ref"]["step"] == 2)
-    assert gap["category"] == "detection-gap" and gap["recommendation"] == "log UAs"
-    unproven = next(f for f in env["findings"] if f["ref"]["step"] == 3)
-    assert unproven["confidence"] == "unproven"
-    idea = env["findings"][-1]
-    assert idea["category"] == "detection-idea" and idea["mitre"] == ["T1595"]
-
-
-def test_the_envelope_is_capped():
-    doc = {"summary": {"leads": [f"lead {i}" for i in range(900)]}, "surface": {}}
-    assert len(envelope.from_recon(doc)["findings"]) == envelope.MAX_FINDINGS
-    long = envelope.finding("x", "t", category="c", evidence=["e" * 9999] * 50)
-    assert len(long["evidence"]) == envelope.MAX_EVIDENCE
-    assert len(long["evidence"][0]) == envelope.MAX_TEXT
-
-
-def test_the_spec_and_the_code_name_the_same_fields():
-    spec = (ROOT / "findings-envelope.md").read_text(encoding="utf-8")
-    assert envelope.ENVELOPE in spec
-    for field in HEADER | FINDING:
-        assert f"`{field}" in spec or f'"{field}"' in spec, field
-    for sev in envelope.SEVERITIES:
-        assert f"`{sev}`" in spec
-
-
-def test_findings_envelopes_are_gitignored_with_the_reports():
-    r = subprocess.run(["git", "-C", str(ROOT), "check-ignore", "-q",
-                        "reports/x.findings.json"])
-    if r.returncode == 128:
-        pytest.skip("not a git checkout")
-    assert r.returncode == 0
 
 
 # --------------------------------------------------------------------------- #

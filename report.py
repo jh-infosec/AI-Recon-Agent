@@ -473,7 +473,7 @@ class SessionReport:
         _write_json(self.json_path, doc)
         # The shared findings envelope (findings-envelope.md), built from the
         # same document so it can only say what this report says.
-        _write_json(self.findings_path, envelope.from_recon(doc, self.json_path.name))
+        _write_json(self.findings_path, envelope.from_recon(doc))
 
     # -------------------------------------------------------------- html render
     def _render_html(self):
@@ -715,7 +715,6 @@ class PurpleReport:
         self.path = REPORTS_DIR / f"{base}.md"
         self.html_path = REPORTS_DIR / f"{base}.html"
         self.json_path = REPORTS_DIR / f"{base}.json"
-        self.findings_path = REPORTS_DIR / f"{base}.findings.json"
         self._notes: list = []
         self._incomplete: str | None = None
         self._unverified_returned: list = []
@@ -769,9 +768,10 @@ class PurpleReport:
         self._telemetry = telemetry
         self._render_md()
         self._render_html()
-        doc = self.to_json()
-        _write_json(self.json_path, doc)
-        _write_json(self.findings_path, envelope.from_purple(doc, self.json_path.name))
+        # No findings envelope: purple's findings are conclusions drawn from two
+        # other tools' records, and the specification asks an emitter not to
+        # restate what it took from elsewhere. See envelope.py.
+        _write_json(self.json_path, self.to_json())
 
     def to_json(self) -> dict:
         rows = self._rows()
@@ -1131,8 +1131,13 @@ class HuntReport:
 
     def _render_json(self):
         doc = self.to_json()
+        env, excluded = envelope.from_hunt(doc)
+        # Findings whose evidence is not a line the hunt's tools returned stay
+        # in this report but are left out of the envelope, which carries only
+        # observed evidence. Recorded here so the omission is visible.
+        doc["envelope_excluded"] = excluded
         _write_json(self.json_path, doc)
-        _write_json(self.findings_path, envelope.from_hunt(doc, self.json_path.name))
+        _write_json(self.findings_path, env)
 
     def _render_html(self):
         e = html.escape

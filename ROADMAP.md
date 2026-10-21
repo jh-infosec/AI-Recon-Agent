@@ -198,15 +198,21 @@ repository.
   style of `auth_summary`. Built from a real export, not from the schema.
 - Streaming for the remaining tools, matching maltriage's v0.1.2 refactor.
 
+## v0.10.1 - the envelope, to the real specification (shipped)
+
+- `envelope.py` rewritten to Shadowfax's `findings-envelope.md` v1.0, and
+  tested against Shadowfax's own validator.
+- Shadowfax's suite ingests two envelopes from this emitter.
+
 ## v1.0.0 - proven
 
-The envelope and the packaging, once planned here, shipped in v0.10.0. What
-is left is what makes a 1.0 honest:
+The packaging shipped in v0.10.0, and the envelope in v0.10.1, conforming
+to the specification Shadowfax already implements; Shadowfax's own suite now
+ingests this tool's envelopes. What is left is what makes a 1.0 honest:
 
 - A live run of everything since v0.7.3 on the homelab VM, with the recon
-  report, hunt report, purple report and logs kept as fixtures.
-- The Shadowfax ingest of `*.findings.json`, built in that repository against
-  `findings-envelope.md`.
+  report, hunt report, purple report and logs kept as fixtures, and the
+  envelopes from that run ingested into a running Shadowfax.
 - Windows logs (v0.9.1), if the homelab includes a Windows box.
 
 ## Not planned

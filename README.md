@@ -1,6 +1,6 @@
 # ai-recon-agent
 
-**v0.10.0**
+**v0.10.1**
 
 ai-recon-agent is a small security study kit with two halves: a **red-team
 recon agent** for practicing enumeration on machines you're authorized to
@@ -185,11 +185,24 @@ box whose logs you can collect, so a homelab VM, not an HTB or THM machine.
 
 ## The findings envelope
 
-Every report also writes a `<name>.findings.json`: one small, fixed shape for
-the results of all three tools, for other tools in the portfolio to read
-(Shadowfax first). Severity is carried where the producer set it and marked
-`unrated` where it did not; it is never guessed. The format, and the rules for
-whoever consumes it, are in `findings-envelope.md`.
+Every recon and hunt session also writes a `<name>.findings.json` in the
+portfolio's findings envelope, the format Shadowfax ingests through
+`POST /findings`. The format is specified in the Shadowfax repository
+(`findings-envelope.md`); `envelope-emitter.md` here records what this tool
+puts in it: which keys, which severities, and what it marks as verified.
+
+Two rules from the specification shape it most. Evidence must be observed: a
+hunt finding goes in only if its evidence is a log line the hunt's own tools
+returned, word for word, and a recon session's leads, being the model's
+reasoning, never go in. And `validated` means this tool checked it: an open
+port or a path that answered is validated, a banner or a hostname is the
+target describing itself.
+
+```bash
+ai-hunt --logs ./samples                      # writes reports/hunt_<...>.findings.json
+# from the Shadowfax folder, with Shadowfax running:
+python cli.py ingest ~/JH/AI-Recon-Agent/reports/hunt_<...>.findings.json
+```
 
 ## Project layout
 
@@ -209,7 +222,7 @@ purple.py                 - PURPLE: one engagement from both sides, quotes check
 safety.py                 - recon-side allowlist gate
 paths.py                  - one home folder for allowlist, reports, state, wordlists
 wordgen.py                - target-aware wordlists built from the attack surface
-envelope.py               - the shared findings envelope (findings-envelope.md)
+envelope.py               - emits the portfolio findings envelope (spec lives in Shadowfax)
 logtime.py                - log timestamps from four formats onto one UTC clock
 knowledge.py              - recon finding -> MITRE ATT&CK -> HTB Academy lookup
 detections.py             - hunt log-signal -> MITRE ATT&CK lookup
@@ -228,7 +241,7 @@ pyproject.toml            - ruff + pytest config
 requirements.txt          - runtime deps       requirements-dev.txt - dev/CI deps
 .github/workflows/ci.yml  - lints, tests, and audits deps on push
 CHANGELOG.md              - what changed between versions
-findings-envelope.md      - the shared findings format, and notes for consumers
+envelope-emitter.md       - what this tool puts in the findings envelope, and why
 ROADMAP.md                - what ships when, and why it is placed there
 architecture.md           - design principles, constraints, cleared defects
 ```
@@ -238,7 +251,7 @@ architecture.md           - design principles, constraints, cleared defects
 ```bash
 pip install -r requirements-dev.txt
 ruff check .      # lint
-python -m pytest -q  # run the full suite (850 tests)
+python -m pytest -q  # run the full suite (860 tests)
 pip-audit -r requirements.txt   # supply-chain audit
 ```
 
