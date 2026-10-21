@@ -133,6 +133,11 @@ issuer, in both the table and the output text, to stand in for one.
 
 ## Not yet captured
 
+- Real logs from a box this project has scanned: an `auth.log` (classic or ISO
+  syslog) and an Apache or nginx `access.log`. `test_v090.py` builds all four
+  timestamp formats in their documented shapes. Put real ones in
+  `tests/fixtures/real/logs/` after removing anything you would not publish.
+
 - A recon report and a hunt report of the SAME box, for purple.py. The tests in
   `test_v080.py` use a pair written by the real report writers with
   constructed content. The homelab run produces the real pair; put both JSON

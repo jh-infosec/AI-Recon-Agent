@@ -993,6 +993,15 @@ does not exist, deterministically. It does not catch a real line attributed
 to the wrong step; the per-step timestamps added in schema 2 are there for
 the student to check that, and for a future version to check in code.
 
+Added in v0.9.0.
+
+**A missing timezone is borrowed, and the borrowing is reported.** Classic
+syslog and Sysmon's UtcTime carry no offset, and merging them with logs that
+do needs one. The logs of one box share a clock, so the offset its other logs
+state is the best evidence available; the timeline's Clock line says which
+offset was used and why, or that UTC was assumed for lack of any. A silently
+assumed timezone is how a two-hour shift turns cause and effect around.
+
 ## Accepted Designs
 
 Decided, not yet built. Recorded so the implementation has something to be

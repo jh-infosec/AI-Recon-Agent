@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.9.0] - 2026-10-14
+
+Added: **a `timeline` tool for the hunt agent.** The other log tools look at one file at a time, and an incident runs across them: a port scan in one log, a directory brute force in another, a login after both. `timeline` merges the timestamped lines of every log in the workspace into one UTC-ordered view, filtered by a plain substring (an IP, a username, never a regex, so it needs no screening) and an optional start and end. It returns a bounded page and says where to continue.
+
+It reads four timestamp shapes (new module `logtime.py`):
+
+- **classic syslog** (`Oct 14 10:02:11`): no year, no timezone.
+- **rsyslog ISO** (`2026-10-14T10:02:11.123456+02:00`): the default on Debian 12 and recent Ubuntu, so the likeliest format on a homelab VM.
+- **Apache and nginx** (`[14/Oct/2026:10:03:40 +0200]`).
+- **JSON lines**, under any of the common field names, as ISO text or epoch seconds or milliseconds. Sysmon's offset-less `UtcTime` is read too, ahead of v0.9.1.
+
+A timestamp with an offset is converted exactly. One without (classic syslog, Sysmon) borrows the offset the box's other logs state, because one box's logs share a clock, and the tool says that it did; with nothing to borrow, it assumes UTC and says that too. Classic syslog's missing year comes from the same evidence, and a file that crosses New Year steps back a year for the lines before the crossing. Lines with no timestamp are counted per file, not silently dropped.
+
+Logs are streamed line by line for the timeline, so memory follows what matches, not file size. `.jsonl` files are now listed as log sources. The file walk is shared with `list_sources`, so the two can never disagree about what is in scope, and the symlink rule from v0.3.2 applies to both.
+
+Checked: **`auth_summary` on ISO syslog.** Every earlier test used the classic format, and a current-distribution VM writes the ISO one. It still finds a brute force followed by a login, because its patterns match anywhere in the line and its ordering falls back to file order. Now there is a test that says so.
+
+Checked: a timeline line is valid evidence for `purple.py`. Its quote check matches the raw log line inside the timeline's output.
+
+Not yet validated on real logs. The formats are constructed in each writer's documented shape. The homelab run's auth.log and access.log belong in `tests/fixtures/real/logs/` once checked.
+
+Roadmap: Windows EVTX and Sysmon parsing move to v0.9.1, since they need a real export to build from. The v0.9.0 item "`list_sources` stops following directory symlinks" was already done in v0.3.2 and is struck.
+
+Tests: 41 new (807 total).
+
 ## [0.8.0] - 2026-10-14
 
 Added: **`purple.py`, one engagement told from both sides.** Give it the JSON report of a recon session against a box and the JSON report of a hunt over that box's logs, and it walks the engagement step by step: each recon action beside the log lines it left, or marked as a blind spot, with what would have caught it. It ends with detection ideas for the biggest gaps. Markdown, HTML and JSON output, like the other two.

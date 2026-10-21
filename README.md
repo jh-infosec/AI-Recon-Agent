@@ -1,6 +1,6 @@
 # ai-recon-agent
 
-**v0.8.0**
+**v0.9.0**
 
 ai-recon-agent is a small security study kit with two halves: a **red-team
 recon agent** for practicing enumeration on machines you're authorized to
@@ -128,7 +128,11 @@ The tools Claude drives: `list_sources`, `read_lines`, `search` (regex),
 `auth_summary` (SSH/auth brute-force, sudo priv-esc, and new-account
 detection, including a "failed many times then succeeded" correlation), and
 `web_log_summary` (path traversal, SQLi, scanner user-agents, and web-shell
-hits - flagging any probe that returned HTTP 200). The bundled
+hits - flagging any probe that returned HTTP 200), and `timeline`, which
+puts every log on one UTC clock so one IP can be followed across them. It
+reads classic and ISO syslog, Apache/nginx and JSON-lines timestamps; where a
+log states no timezone it borrows the one the box's other logs state, and
+says so. The bundled
 `samples/` folder contains a synthetic intrusion you can read by hand first,
 then compare against the agent's findings (see `samples/README.md`).
 
@@ -174,6 +178,7 @@ apiclient.py              - API retry with backoff
 hunt.py                   - BLUE TEAM: threat-hunting loop over logs
 purple.py                 - PURPLE: one engagement from both sides, quotes checked
 safety.py                 - recon-side allowlist gate
+logtime.py                - log timestamps from four formats onto one UTC clock
 knowledge.py              - recon finding -> MITRE ATT&CK -> HTB Academy lookup
 detections.py             - hunt log-signal -> MITRE ATT&CK lookup
 tools/recon.py            - nmap / whatweb / gobuster / ffuf / dns / smb / ldap / searchsploit
@@ -200,7 +205,7 @@ architecture.md           - design principles, constraints, cleared defects
 ```bash
 pip install -r requirements-dev.txt
 ruff check .      # lint
-python -m pytest -q  # run the full suite (766 tests)
+python -m pytest -q  # run the full suite (807 tests)
 pip-audit -r requirements.txt   # supply-chain audit
 ```
 

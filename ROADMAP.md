@@ -180,13 +180,19 @@ This is the feature with no counterpart in the commercial tools this project
 takes its shape from, and it is the reason for keeping both halves in one
 repository.
 
-## v0.9.0 - the hunt side catches up
+## v0.9.0 - the hunt side catches up (shipped)
 
-- Streaming log parse, matching the approach maltriage took in its v0.1.2
-  refactor.
-- Windows Security EVTX exported to JSON, Sysmon, JSON-lines application logs.
-- A `timeline` tool merging events across sources into one ordered view.
-- `list_sources` stops following directory symlinks.
+- A `timeline` tool merging events across sources into one UTC-ordered view,
+  reading classic and ISO syslog, Apache/nginx and JSON-lines timestamps.
+- Streaming parse for the timeline.
+- ~~`list_sources` stops following directory symlinks~~: already done in
+  v0.3.2.
+
+## v0.9.1 - Windows logs
+
+- Windows Security EVTX exported to JSON, and Sysmon, with summaries in the
+  style of `auth_summary`. Built from a real export, not from the schema.
+- Streaming for the remaining tools, matching maltriage's v0.1.2 refactor.
 
 ## v1.0.0 - it talks to the rest of the portfolio
 

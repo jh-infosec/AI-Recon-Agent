@@ -15,7 +15,7 @@ What it does:
      call is locked to that workspace and is read-only - it never modifies,
      moves, or deletes a log (chain-of-custody discipline).
   2. Hands Claude a toolbox: list_sources, read_lines, search, auth_summary,
-     web_log_summary. Claude decides what to look at, the way an analyst
+     web_log_summary, timeline. Claude decides what to look at, the way an analyst
      triages an alert.
   3. After each result, Claude explains what the evidence means and maps it
      to a MITRE ATT&CK technique (see detections.py).
@@ -93,7 +93,10 @@ Ground rules:
 {format_for_prompt()}
 
 - Correlate across sources: the same source IP appearing in a web attack and \
-  then in a successful SSH login is one story, not two. Build a timeline.
+  then in a successful SSH login is one story, not two. Use `timeline` to \
+  put every log on one UTC clock, filtered to an IP or username with \
+  `contains`, and read the incident in order. Check its Clock line: a log \
+  with no timezone of its own has had one assumed, and says which.
 - Distinguish what you can PROVE from the logs versus what you SUSPECT. A \
   finding is a lead for a human to verify, not a confirmed conviction.
 - IMPORTANT: the prose you write in this conversation is NOT the report. Only \
@@ -163,6 +166,27 @@ TOOLS = [
             "type": "object",
             "properties": {"source": {"type": "string"}},
             "required": ["source"],
+        },
+    },
+    {
+        "name": "timeline",
+        "description": (
+            "Merge the timestamped lines of every log (or the named ones) into one "
+            "time-ordered view in UTC. Handles classic syslog, ISO syslog, Apache/nginx "
+            "and JSON-lines timestamps. Use it to follow one IP or user across logs. "
+            "`contains` is a plain substring, not a regex."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "sources": {"type": "array", "items": {"type": "string"},
+                            "description": "Log names from list_sources; omit for all."},
+                "contains": {"type": "string",
+                             "description": "Only lines containing this text, e.g. an IP."},
+                "start": {"type": "string", "description": "ISO 8601, e.g. 2026-10-14T08:00:00Z"},
+                "end": {"type": "string", "description": "ISO 8601"},
+                "limit": {"type": "integer", "description": "Max lines shown (cap 200)."},
+            },
         },
     },
     {
@@ -237,6 +261,15 @@ def dispatch_tool(name: str, tool_input: dict, workspace: str) -> dict:
         return la.auth_summary(workspace, source=tool_input.get("source", ""))
     if name == "web_log_summary":
         return la.web_log_summary(workspace, source=tool_input.get("source", ""))
+    if name == "timeline":
+        return la.timeline(
+            workspace,
+            sources=tool_input.get("sources") or None,
+            contains=tool_input.get("contains", ""),
+            start=tool_input.get("start", ""),
+            end=tool_input.get("end", ""),
+            limit=tool_input.get("limit", 100),
+        )
     raise ValueError(f"Unknown tool: {name}")
 
 

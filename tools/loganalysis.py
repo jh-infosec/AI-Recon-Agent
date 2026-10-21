@@ -23,14 +23,17 @@ No network. No shell. Pure file IO + parsing.
 import os
 import re
 from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
+
+import logtime
 
 MAX_OUTPUT = 20000       # cap returned text so reports/context stay sane
 MAX_LINES = 500          # cap for read_lines
 MAX_MATCHES = 200        # cap for search
 MAX_LINE_SCAN = 4000     # chars of a line a model-supplied regex may see
 BRUTE_FORCE_THRESHOLD = 5  # failures before a success that constitute a brute force
-_TEXT_EXTS = {".log", ".txt", ".out", ".json", ".csv", ".ndjson", ""}
+_TEXT_EXTS = {".log", ".txt", ".out", ".json", ".csv", ".ndjson", ".jsonl", ""}
 
 
 class OutOfWorkspaceError(RuntimeError):
@@ -98,6 +101,37 @@ def _is_inside(root: Path, candidate: Path) -> bool:
         return False
 
 
+def _workspace_files(root: Path) -> list:
+    """
+    Every log file in the workspace, under the containment rule.
+
+    Shared by list_sources and timeline so the two can never disagree about
+    what is in scope. Until v0.3.2 the walk used rglob and is_file(), both of
+    which follow symlinks, so a link inside the workspace pointing at
+    /etc/passwd was listed and read.
+    """
+    if root.is_file():
+        return [root]
+    files = []
+    # followlinks=False stops os.walk descending symlinked directories;
+    # the per-entry resolve below catches symlinked files.
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        dirnames[:] = sorted(dirnames)
+        for name in sorted(filenames):
+            p = Path(dirpath) / name
+            if p.is_symlink():
+                continue
+            try:
+                resolved = p.resolve()
+            except (OSError, RuntimeError):
+                continue
+            if not _is_inside(root, resolved):
+                continue
+            if resolved.suffix.lower() in _TEXT_EXTS and resolved.is_file():
+                files.append(resolved)
+    return files
+
+
 def list_sources(workspace: str) -> dict:
     """
     List the log files available in the workspace, with size and line count.
@@ -110,26 +144,7 @@ def list_sources(workspace: str) -> dict:
     function lists must be something read_lines would allow.
     """
     root = _resolve_root(workspace)
-    if root.is_file():
-        files = [root]
-    else:
-        files = []
-        # followlinks=False stops os.walk descending symlinked directories;
-        # the per-entry resolve below catches symlinked files.
-        for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
-            dirnames[:] = sorted(dirnames)
-            for name in sorted(filenames):
-                p = Path(dirpath) / name
-                if p.is_symlink():
-                    continue
-                try:
-                    resolved = p.resolve()
-                except (OSError, RuntimeError):
-                    continue
-                if not _is_inside(root, resolved):
-                    continue
-                if resolved.suffix.lower() in _TEXT_EXTS and resolved.is_file():
-                    files.append(resolved)
+    files = _workspace_files(root)
 
     rows = []
     for p in files:
@@ -520,3 +535,118 @@ def web_log_summary(workspace: str, source: str = "") -> dict:
         "stderr": "",
         "timed_out": False,
     }
+
+
+# --- timeline across sources ---------------------------------------------- #
+MAX_TIMELINE_EVENTS = 200        # lines returned per call
+MAX_TIMELINE_SOURCES = 20
+MAX_LINES_PER_SOURCE = 200_000   # read, streamed; a log longer than this is cut
+MAX_CONTAINS = 200
+
+
+def timeline(workspace: str, sources=None, contains: str = "", start: str = "",
+             end: str = "", limit: int = 100) -> dict:
+    """
+    Merge the timestamped lines of every log in the workspace (or the ones
+    named) into one time-ordered view, in UTC.
+
+    The other tools look at one log at a time, and the story of an incident
+    runs across them: a port scan in auth.log, a directory brute force in the
+    access log, a login after it. This puts them on one clock. `contains` is
+    a plain substring (an IP, a username), never a regex, so it needs no
+    screening; `start` and `end` bound the window.
+
+    Files are streamed line by line rather than read whole, so a large log
+    costs memory in proportion to what matches, not to its size.
+    """
+    try:
+        lo, hi = logtime.parse_bound(start), logtime.parse_bound(end)
+    except ValueError as e:
+        return {"command": "timeline", "returncode": 1, "stdout": "",
+                "stderr": f"{e}. Use ISO 8601, e.g. 2026-10-14T08:00:00Z.",
+                "timed_out": False}
+    root = _resolve_root(workspace)
+    if sources:
+        names = [str(x) for x in (sources if isinstance(sources, list) else [sources])]
+        paths = [_safe_path(workspace, n) for n in names[:MAX_TIMELINE_SOURCES]]
+    else:
+        paths = _workspace_files(root)[:MAX_TIMELINE_SOURCES]
+    needle = str(contains or "")[:MAX_CONTAINS]
+    try:
+        limit = max(1, min(int(limit), MAX_TIMELINE_EVENTS))
+    except (TypeError, ValueError):
+        limit = MAX_TIMELINE_EVENTS
+
+    fallback_year = max((datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc).year
+                         for p in paths), default=datetime.now(timezone.utc).year)
+    clock = logtime.Clock(fallback_year)
+    kept, per_source = [], {}
+
+    for order, path in enumerate(paths):
+        rel = path.name if root.is_file() else str(path.relative_to(root))
+        stats = {"timed": 0, "untimed": 0, "truncated": False}
+        months, rows = [], []
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for lineno, line in enumerate(f, start=1):
+                if lineno > MAX_LINES_PER_SOURCE:
+                    stats["truncated"] = True
+                    break
+                line = line.rstrip("\n")
+                parsed = logtime.parse_line(line[:MAX_LINE_SCAN])
+                clock.observe(parsed)
+                if parsed is None:
+                    stats["untimed"] += 1
+                    continue
+                stats["timed"] += 1
+                syslog = parsed[0] == "syslog"
+                months.append(parsed[1][0] if syslog else None)
+                if needle and needle not in line:
+                    continue
+                rows.append((len(months) - 1, order, rel, lineno, line, parsed))
+        years = logtime.syslog_years(months, 0)    # offsets from the final year
+        for idx, order_, rel_, lineno, line, parsed in rows:
+            kept.append((years[idx], order_, rel_, lineno, line, parsed))
+        per_source[rel] = stats
+
+    events = []
+    for year_back, order, rel, lineno, line, parsed in kept:
+        when = logtime.to_utc(parsed, clock, clock.year + year_back)
+        if when is None or (lo and when < lo) or (hi and when > hi):
+            continue
+        events.append((when, order, lineno, rel, line))
+    events.sort(key=lambda e: (e[0], e[1], e[2]))
+    shown = events[:limit]
+
+    head = [f"Timeline: {len(paths)} source(s), "
+            f"{sum(st['timed'] for st in per_source.values())} timed lines; "
+            f"{len(events)} match"
+            + (f" '{needle}'" if needle else "")
+            + (" in the window" if (lo or hi) else "")
+            + f", {len(shown)} shown.",
+            f"Clock: {clock.note()}."]
+    for rel, st in per_source.items():
+        extra = f", {st['untimed']} without a timestamp" if st["untimed"] else ""
+        cut = f", cut at {MAX_LINES_PER_SOURCE} lines" if st["truncated"] else ""
+        head.append(f"  {rel}: {st['timed']} timed{extra}{cut}")
+    if len(events) > len(shown):
+        head.append(f"More events than shown. The last one shown is at "
+                    f"{shown[-1][0].strftime('%Y-%m-%dT%H:%M:%SZ')}; narrow with "
+                    f"contains, or page on with start set to that time.")
+    body = [f"{w.strftime('%Y-%m-%dT%H:%M:%SZ')}  {rel}:{n}  {line[:300]}"
+            for w, _o, n, rel, line in shown]
+    return {
+        "command": "timeline(" + ", ".join(
+            x for x in [needle and f"contains={needle!r}", start and f"start={start}",
+                        end and f"end={end}"] if x) + ")",
+        "returncode": 0,
+        "stdout": "\n".join(head + [""] + body)[:MAX_OUTPUT],
+        "stderr": "",
+        "timed_out": False,
+        "parsed": {
+            "matched": len(events), "shown": len(shown), "clock": clock.note(),
+            "sources": per_source,
+            "events": [{"time": w.strftime("%Y-%m-%dT%H:%M:%SZ"), "source": rel, "line": n}
+                       for w, _o, n, rel, _l in shown],
+        },
+    }
+
