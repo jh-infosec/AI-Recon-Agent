@@ -40,7 +40,9 @@ from pathlib import Path
 
 import yaml
 
-CONFIG_PATH = Path(__file__).parent / "config" / "targets.yaml"
+import paths
+
+CONFIG_PATH = paths.TARGETS_FILE
 ALLOWED_PLATFORMS = {"htb", "thm", "homelab"}
 
 # Roots a wordlist may live under. A wordlist is read line by line and each
@@ -52,7 +54,7 @@ ALLOWED_WORDLIST_ROOTS = (
     Path("/usr/share/seclists"),
     Path("/usr/share/dirb"),
     Path("/usr/share/dirbuster"),
-    Path(__file__).parent / "wordlists",
+    paths.WORDLISTS_DIR,
 )
 
 _EXTENSIONS_RE = re.compile(r"^\.?[A-Za-z0-9]{1,10}(,\s*\.?[A-Za-z0-9]{1,10})*$")
@@ -75,14 +77,30 @@ def _load_allowlist():
         hint = ""
         if example.exists():
             hint = f" Copy {example.name} to {CONFIG_PATH.name} and edit it."
+        else:
+            hint = " Run with --init to create one from the template."
         raise NotAuthorizedError(f"No config found at {CONFIG_PATH}.{hint}")
 
-    with open(CONFIG_PATH) as f:
+    with open(CONFIG_PATH, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
+    if not isinstance(data, dict):
+        raise NotAuthorizedError(
+            f"{CONFIG_PATH} is not a mapping. It should hold an `authorized_targets:` list.")
 
     entries = data.get("authorized_targets") or []
+    if not entries and data.get("targets"):
+        # The key is authorized_targets. A file using `targets:` has no
+        # authorized hosts at all, and the gate refuses everything; this only
+        # makes the refusal say why. Nothing under `targets:` is ever read.
+        raise NotAuthorizedError(
+            f"{CONFIG_PATH} lists hosts under `targets:`, but the allowlist key is "
+            f"`authorized_targets:`. Rename the key; until then nothing is authorized.")
+    if not isinstance(entries, list):
+        raise NotAuthorizedError(f"`authorized_targets` in {CONFIG_PATH} must be a list.")
     allowlist = {}
     for entry in entries:
+        if not isinstance(entry, dict):
+            continue
         host = str(entry.get("host", "")).strip()
         platform = str(entry.get("platform", "")).strip().lower()
 

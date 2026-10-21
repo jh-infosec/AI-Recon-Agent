@@ -45,10 +45,11 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+import paths
 from parsers import is_vhost_candidate
 from version import __version__
 
-STATE_DIR = Path(__file__).resolve().parent / "state"
+STATE_DIR = paths.STATE_DIR
 SCHEMA = 1
 
 # Bounds on anything read back from a snapshot before it reaches the model.

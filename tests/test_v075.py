@@ -99,7 +99,9 @@ def session(tmp_path, monkeypatch, capsys):
             code = e.code
         capsys.readouterr()
         reports = tmp_path / "reports"
-        doc = json.loads(next(reports.glob("*.json")).read_text(encoding="utf-8"))
+        # Not the .findings.json envelope added in v0.10.0: the report itself.
+        main = next(p for p in reports.glob("*.json") if not p.name.endswith(".findings.json"))
+        doc = json.loads(main.read_text(encoding="utf-8"))
         return code, doc, reports
     return _run
 
@@ -118,9 +120,11 @@ COMPLETE = [
 # --------------------------------------------------------------------------- #
 def test_the_json_sits_beside_the_other_two(session):
     _, _, reports = session(list(COMPLETE))
-    stems = {p.stem for p in reports.iterdir()}
-    assert len(stems) == 1
-    assert {p.suffix for p in reports.iterdir()} == {".md", ".html", ".json"}
+    names = sorted(p.name for p in reports.iterdir())
+    base = next(n for n in names if n.endswith(".md"))[:-3]
+    # The findings envelope joined them in v0.10.0.
+    assert names == sorted([f"{base}.findings.json", f"{base}.html", f"{base}.json",
+                            f"{base}.md"])
 
 
 def test_no_temporary_file_is_left_behind(session):

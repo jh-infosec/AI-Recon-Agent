@@ -161,10 +161,14 @@ better, which is a question for a live comparison, not a token count.
   input v0.8.0 and v1.0.0 build on.
 - Every file in `reports/` is git-ignored, not just two extensions.
 
-## v0.7.6 - target-aware wordlists
+## v0.7.6 - target-aware wordlists (shipped in v0.10.0)
 
-- Wordlist generation from fingerprint output, subject to the v0.3.1 path
-  rules for anything written to disk.
+## v0.10.0 - packaging, wordlists, envelope (shipped)
+
+- One home folder (`paths.py`); `pip install .` gives `ai-recon`, `ai-hunt`,
+  `ai-purple`; `--init` creates the allowlist.
+- Target-aware wordlists (`wordgen.py`), the old v0.7.6.
+- The findings envelope and its specification, from the old v1.0.0.
 
 ## v0.8.0 - purple (shipped, awaiting a live pair)
 
@@ -194,12 +198,16 @@ repository.
   style of `auth_summary`. Built from a real export, not from the schema.
 - Streaming for the remaining tools, matching maltriage's v0.1.2 refactor.
 
-## v1.0.0 - it talks to the rest of the portfolio
+## v1.0.0 - proven
 
-- `finish_session` and `finish_hunt` emit the shared findings envelope
-  alongside their existing reports. See `findings-envelope.md`.
-- A documented handoff into Shadowfax.
-- Packaging and an install path that does not assume the repository directory.
+The envelope and the packaging, once planned here, shipped in v0.10.0. What
+is left is what makes a 1.0 honest:
+
+- A live run of everything since v0.7.3 on the homelab VM, with the recon
+  report, hunt report, purple report and logs kept as fixtures.
+- The Shadowfax ingest of `*.findings.json`, built in that repository against
+  `findings-envelope.md`.
+- Windows logs (v0.9.1), if the homelab includes a Windows box.
 
 ## Not planned
 

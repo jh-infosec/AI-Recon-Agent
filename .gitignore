@@ -15,3 +15,9 @@ config/targets.yaml
 # never be reached.
 state/*
 !state/README.md
+# Generated wordlists name a target's paths and hostnames (v0.10.0).
+wordlists/generated/
+# Packaging output (v0.10.0).
+build/
+dist/
+*.egg-info/

@@ -1,8 +1,33 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "ai-recon-agent"
-version = "0.9.0"
+version = "0.10.0"
 description = "A small, Claude-orchestrated recon/study agent for authorized targets only."
 requires-python = ">=3.10"
+# requirements.txt stays the single list of runtime dependencies (house style);
+# the package reads it rather than repeating it.
+dynamic = ["dependencies"]
+
+[project.scripts]
+ai-recon = "agent:main"
+ai-hunt = "hunt:main"
+ai-purple = "purple:main"
+
+[tool.setuptools]
+# Flat layout: every top-level module is listed, and tests/test_v0100.py fails
+# if one is added to the repository and left out of this list.
+py-modules = [
+    "agent", "apiclient", "caching", "completeness", "console", "detections", "envelope",
+    "hunt", "knowledge", "logtime", "parsers", "paths", "purple", "repeats",
+    "report", "safety", "state", "surface", "telemetry", "version", "wordgen",
+]
+packages = ["tools"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
 
 [tool.ruff]
 line-length = 100

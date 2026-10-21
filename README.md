@@ -1,6 +1,6 @@
 # ai-recon-agent
 
-**v0.9.0**
+**v0.10.0**
 
 ai-recon-agent is a small security study kit with two halves: a **red-team
 recon agent** for practicing enumeration on machines you're authorized to
@@ -72,15 +72,30 @@ pip install -r requirements.txt
 # 3. Your own Anthropic API key
 export ANTHROPIC_API_KEY=sk-ant-...
 
-# 4. Create your allowlist from the template (first run only)
-cp config/targets.example.yaml config/targets.yaml
+# 4. Create the allowlist and folders (first run only; never overwrites)
+python agent.py --init
 
 # 5. Connect to your HTB/THM VPN and spawn a machine, then:
-#    edit config/targets.yaml and add the target's IP
+#    edit config/targets.yaml and add the target under `authorized_targets:`
 
 # 6. Run it
 python agent.py --target 10.10.11.123
 ```
+
+Or install it, and use it from anywhere:
+
+```bash
+pip install .            # from the repository folder
+ai-recon --init          # creates ~/.local/share/ai-recon-agent/
+ai-recon --target 10.10.11.123
+ai-hunt --logs ./samples
+ai-purple --recon <recon>.json --hunt <hunt>.json
+```
+
+Installed, the allowlist, reports, state and generated wordlists live in
+`~/.local/share/ai-recon-agent/` (or `$XDG_DATA_HOME/ai-recon-agent`). Run from
+the repository, they stay in the repository as before. Set `AI_RECON_HOME` to
+put them anywhere else.
 
 Run this from the machine that's actually on your HTB/THM VPN connection
 (e.g. your Kali VM) - the script doesn't manage the VPN for you.
@@ -99,6 +114,12 @@ helps to know what's in the box:
   already read the certificate on every TLS port (RDP included), and the
   subject and SAN names in it become hostnames for vhost fuzzing, labelled in
   the console with the port they came from.
+- **Target-aware wordlists** - after a first pass, `generate_wordlist` builds
+  a list for that target from what the session found: default paths for the
+  stack whatweb identified (WordPress, Tomcat, IIS, PHP and others), backup
+  copies of files already discovered (`config.php.bak`, `config.php~`), and
+  labels from discovered hostnames. It sends nothing itself; the fuzzers run
+  it through the same wordlist gate as any other list.
 - **DNS enum** - if port 53 is open, Claude attempts a zone transfer (AXFR)
   and record lookups. A successful AXFR against a misconfigured server is a
   classic, high-value finding.
@@ -162,6 +183,14 @@ Two rules are enforced in code, not asked for:
 It reads two files and calls the API; it never touches a target. It needs a
 box whose logs you can collect, so a homelab VM, not an HTB or THM machine.
 
+## The findings envelope
+
+Every report also writes a `<name>.findings.json`: one small, fixed shape for
+the results of all three tools, for other tools in the portfolio to read
+(Shadowfax first). Severity is carried where the producer set it and marked
+`unrated` where it did not; it is never guessed. The format, and the rules for
+whoever consumes it, are in `findings-envelope.md`.
+
 ## Project layout
 
 ```
@@ -178,6 +207,9 @@ apiclient.py              - API retry with backoff
 hunt.py                   - BLUE TEAM: threat-hunting loop over logs
 purple.py                 - PURPLE: one engagement from both sides, quotes checked
 safety.py                 - recon-side allowlist gate
+paths.py                  - one home folder for allowlist, reports, state, wordlists
+wordgen.py                - target-aware wordlists built from the attack surface
+envelope.py               - the shared findings envelope (findings-envelope.md)
 logtime.py                - log timestamps from four formats onto one UTC clock
 knowledge.py              - recon finding -> MITRE ATT&CK -> HTB Academy lookup
 detections.py             - hunt log-signal -> MITRE ATT&CK lookup
@@ -196,6 +228,7 @@ pyproject.toml            - ruff + pytest config
 requirements.txt          - runtime deps       requirements-dev.txt - dev/CI deps
 .github/workflows/ci.yml  - lints, tests, and audits deps on push
 CHANGELOG.md              - what changed between versions
+findings-envelope.md      - the shared findings format, and notes for consumers
 ROADMAP.md                - what ships when, and why it is placed there
 architecture.md           - design principles, constraints, cleared defects
 ```
@@ -205,7 +238,7 @@ architecture.md           - design principles, constraints, cleared defects
 ```bash
 pip install -r requirements-dev.txt
 ruff check .      # lint
-python -m pytest -q  # run the full suite (807 tests)
+python -m pytest -q  # run the full suite (850 tests)
 pip-audit -r requirements.txt   # supply-chain audit
 ```
 

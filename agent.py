@@ -43,9 +43,11 @@ import caching
 import completeness
 import console
 import parsers
+import paths
 import repeats
 import report as report_mod
 import state as state_mod
+import wordgen
 from apiclient import call_with_retry, explain
 from knowledge import format_for_prompt
 from report import SessionReport
@@ -105,6 +107,9 @@ Ground rules:
   investigate whatever's open. On web services, fingerprint first \
   (whatweb), then enumerate content (gobuster/ffuf dir), and if you see a \
   hostname like 'something.htb', fuzz virtual hosts (run_ffuf mode=vhost). \
+  Once a web port is fingerprinted and has had a first pass, \
+  generate_wordlist builds a list for THAT target (its stack, its found \
+  files, its hostnames); run it through ffuf or gobuster as a second pass. \
   If port 53 is open, try run_dns_enum (a zone transfer is a big finding).
 - After EVERY tool result, explain in plain language what it means, why it \
   matters, and name the relevant concept. Map findings to a MITRE ATT&CK \
@@ -177,6 +182,22 @@ TOOLS = [
                     ),
                 },
             },
+        },
+    },
+    {
+        "name": "generate_wordlist",
+        "description": (
+            "Build a wordlist for one web port from what this session already found: "
+            "technology seeds for the stack whatweb identified (WordPress, Tomcat, IIS, "
+            "PHP and others), backup-copy probes for files already discovered, and "
+            "labels from discovered hostnames. Run it after fingerprinting and a first "
+            "enumeration, then pass the returned path as `wordlist` to run_ffuf or "
+            "run_gobuster. Sends nothing to the target itself."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"port": {"type": "integer", "default": 80}},
+            "required": ["port"],
         },
     },
     {
@@ -405,9 +426,24 @@ def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--target", required=True, help="Host/IP from config/targets.yaml")
+    parser.add_argument("--target", help="Host/IP from config/targets.yaml")
+    parser.add_argument("--init", action="store_true",
+                        help="Create the config, reports and state folders and an empty "
+                             "allowlist, then exit. Never overwrites an existing allowlist.")
     parser.add_argument("--version", action="version", version=f"ai-recon-agent {__version__}")
     args = parser.parse_args()
+
+    if args.init:
+        created = paths.init_home()
+        print(console.agent("agent", f"home: {paths.HOME}"))
+        for p in created:
+            print(console.note(f"created {p}"))
+        if paths.TARGETS_FILE not in created:
+            print(console.note(f"{paths.TARGETS_FILE} already exists and was left as it is"))
+        print(console.note("add an authorized target to the allowlist before running"))
+        return
+    if not args.target:
+        parser.error("--target is required (or --init to set up)")
 
     try:
         meta = assert_authorized(args.target)
@@ -593,7 +629,13 @@ def main():
                 # with no time can only be matched by guessing.
                 started_at = report_mod.utc_now()
                 try:
-                    result = dispatch_tool(block.name, block.input, args.target)
+                    if block.name == "generate_wordlist":
+                        # Built from the surface, not from the network, so it
+                        # needs the session's state rather than the dispatcher.
+                        result = wordgen.generate(args.target,
+                                                  block.input.get("port", 80), surface)
+                    else:
+                        result = dispatch_tool(block.name, block.input, args.target)
                 except Exception as e:  # noqa: BLE001
                     result = {
                         "command": "n/a",

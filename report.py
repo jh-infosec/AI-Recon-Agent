@@ -31,10 +31,12 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+import envelope
 import parsers
+import paths
 from version import __version__
 
-REPORTS_DIR = Path(__file__).parent / "reports"
+REPORTS_DIR = paths.REPORTS_DIR
 
 
 def _fence(text: str) -> str:
@@ -169,6 +171,7 @@ class SessionReport:
         self.path = REPORTS_DIR / f"{base}.md"
         self.html_path = REPORTS_DIR / f"{base}.html"
         self.json_path = REPORTS_DIR / f"{base}.json"
+        self.findings_path = REPORTS_DIR / f"{base}.findings.json"
 
         self._steps = 0
         self._events: list[dict] = []   # ordered timeline for the HTML render
@@ -466,7 +469,11 @@ class SessionReport:
         }
 
     def _render_json(self):
-        _write_json(self.json_path, self.to_json())
+        doc = self.to_json()
+        _write_json(self.json_path, doc)
+        # The shared findings envelope (findings-envelope.md), built from the
+        # same document so it can only say what this report says.
+        _write_json(self.findings_path, envelope.from_recon(doc, self.json_path.name))
 
     # -------------------------------------------------------------- html render
     def _render_html(self):
@@ -708,6 +715,7 @@ class PurpleReport:
         self.path = REPORTS_DIR / f"{base}.md"
         self.html_path = REPORTS_DIR / f"{base}.html"
         self.json_path = REPORTS_DIR / f"{base}.json"
+        self.findings_path = REPORTS_DIR / f"{base}.findings.json"
         self._notes: list = []
         self._incomplete: str | None = None
         self._unverified_returned: list = []
@@ -761,7 +769,9 @@ class PurpleReport:
         self._telemetry = telemetry
         self._render_md()
         self._render_html()
-        _write_json(self.json_path, self.to_json())
+        doc = self.to_json()
+        _write_json(self.json_path, doc)
+        _write_json(self.findings_path, envelope.from_purple(doc, self.json_path.name))
 
     def to_json(self) -> dict:
         rows = self._rows()
@@ -971,6 +981,7 @@ class HuntReport:
         self.path = REPORTS_DIR / f"{base}.md"
         self.html_path = REPORTS_DIR / f"{base}.html"
         self.json_path = REPORTS_DIR / f"{base}.json"
+        self.findings_path = REPORTS_DIR / f"{base}.findings.json"
 
         self._steps = 0
         self._events: list[dict] = []
@@ -1119,7 +1130,9 @@ class HuntReport:
         }
 
     def _render_json(self):
-        _write_json(self.json_path, self.to_json())
+        doc = self.to_json()
+        _write_json(self.json_path, doc)
+        _write_json(self.findings_path, envelope.from_hunt(doc, self.json_path.name))
 
     def _render_html(self):
         e = html.escape

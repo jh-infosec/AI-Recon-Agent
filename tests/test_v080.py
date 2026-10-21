@@ -282,7 +282,8 @@ def run(pair, monkeypatch, capsys):
             code = e.code
         out = capsys.readouterr().out
         reports = tmp / "reports"
-        doc = json.loads(next(reports.glob("purple_*.json")).read_text(encoding="utf-8"))
+        doc = json.loads(next(p for p in reports.glob("purple_*.json")
+                              if not p.name.endswith(".findings.json")).read_text(encoding="utf-8"))
         html = next(reports.glob("purple_*.html")).read_text(encoding="utf-8")
         md = next(reports.glob("purple_*.md")).read_text(encoding="utf-8")
         return code, doc, client, out, html, md
@@ -420,6 +421,7 @@ def test_the_hunt_loop_stamps_its_calls_too(tmp_path, monkeypatch, capsys):
     except SystemExit:
         pass
     capsys.readouterr()
-    doc = json.loads(next(tmp_path.glob("hunt_*.json")).read_text(encoding="utf-8"))
+    doc = json.loads(next(p for p in tmp_path.glob("hunt_*.json")
+                          if not p.name.endswith(".findings.json")).read_text(encoding="utf-8"))
     ev = doc["timeline"][0]
     assert ev["tool"] == "list_sources" and ev["started_at"] and ev["finished_at"]

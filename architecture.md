@@ -1002,6 +1002,24 @@ state is the best evidence available; the timeline's Clock line says which
 offset was used and why, or that UTC was assumed for lack of any. A silently
 assumed timezone is how a two-hour shift turns cause and effect around.
 
+Added in v0.10.0.
+
+**Paths come from one place.** Four modules each anchored a directory to
+their own location, which only worked from a checkout. `paths.py` now
+decides the home once. The allowlist moves with it, which widens nothing:
+whoever can set `AI_RECON_HOME` can already edit the allowlist.
+
+**Generated wordlists are evidence, not model output.** `generate_wordlist`
+takes no words from the model, only a port, and builds from the attack
+surface. Its words still come from the target, so each is shape-checked
+before it is written, and the file reaches the fuzzers through the same
+wordlist gate as any list on disk.
+
+**The envelope is derived, not parallel.** It is built from each report's
+`to_json()`, so it cannot drift from the report or say anything the report
+does not. Severity is copied where it exists and marked `unrated` where it
+does not.
+
 ## Accepted Designs
 
 Decided, not yet built. Recorded so the implementation has something to be
@@ -1021,11 +1039,11 @@ selected by `lookup()` against what has been found so far rather than injected
 wholesale. Smaller prompts, and the phase structure becomes readable as
 architecture rather than buried in one string constant.
 
-### Findings envelope
+### Findings envelope (shipped in v0.10.0)
 
-Both `finish_session` and `finish_hunt` emit the shared envelope alongside
-their existing reports, so Shadowfax can ingest them. See
-`findings-envelope.md`. Emitting is additive; neither report changes.
+Every report emits the shared envelope beside its other files, so Shadowfax
+can ingest them. See `findings-envelope.md`. Emitting is additive; no report
+changes.
 
 ## Required Files
 
@@ -1035,6 +1053,9 @@ The following files are part of the project structure and must be preserved:
 agent.py            hunt.py             safety.py
 version.py          knowledge.py        detections.py       report.py
 parsers.py          surface.py          telemetry.py        apiclient.py
+caching.py          completeness.py     console.py          repeats.py
+state.py            logtime.py          purple.py           paths.py
+wordgen.py          envelope.py         findings-envelope.md
 tools/recon.py      tools/loganalysis.py
 config/targets.yaml samples/
 requirements.txt    requirements-dev.txt

@@ -267,6 +267,8 @@ class AttackSurface:
     # their own session already fetched a 200 from it is advice that wastes
     # their time.
     responded: dict = field(default_factory=dict)
+    # port -> [plugin names and values] from whatweb, for wordgen.py.
+    fingerprints: dict = field(default_factory=dict)
     # port -> {path: status}. Fuzz results are the other half of the surface:
     # a port is where the application listens, a path is what it exposes, and
     # a rerun that cannot say "this path is new" is not reporting change.
@@ -338,6 +340,14 @@ class AttackSurface:
             port = int(tool_input.get("port", 80))
             self.fingerprinted.add(port)
             self.fingerprint_outcome[port] = _fingerprint_outcome(parsed, result)
+            # What the fingerprint named, kept for wordgen.py to pick
+            # technology seeds from. Plugin names and values only, bounded.
+            names = []
+            for plugin, values in sorted((parsed.get("plugins") or {}).items()):
+                names.append(str(plugin)[:60])
+                names += [str(v)[:60] for v in (values or [])[:3]]
+            if names:
+                self.fingerprints[port] = sorted(set(self.fingerprints.get(port, [])) | set(names))
 
         elif tool_name == "run_gobuster":
             port = int(tool_input.get("port", 80))
