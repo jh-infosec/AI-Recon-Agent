@@ -29,7 +29,7 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import purple  # noqa: E402
-from tests.test_v080 import KALI, _answer, _good_answer, pair, run  # noqa: E402,F401
+from tests.test_v080 import KALI, _answer, _good_answer  # noqa: E402
 
 _IDS = itertools.count(1)
 LIVE_NARRATIVE = ("The attacking machine ran a three-step recon chain against the "

@@ -29,7 +29,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import purple  # noqa: E402
-from tests.test_v080 import (_answer, _good_answer, corpus, pair, run)  # noqa: E402,F401
+from tests.test_v080 import _answer, _good_answer  # noqa: E402
 
 
 def _stringified(**override):

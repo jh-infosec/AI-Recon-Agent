@@ -21,3 +21,7 @@ wordlists/generated/
 build/
 dist/
 *.egg-info/
+# Logs copied off a target for the hunt agent. They are the target's data,
+# not this project's; a live run worth keeping is copied into
+# tests/fixtures/ deliberately (v1.0.0 kept logs/lab131 that way).
+logs/

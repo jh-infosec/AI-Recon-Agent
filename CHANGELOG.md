@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.1] - 2026-10-23
+
+Fixed: **CI was red from v0.10.4 to v1.0.0.** The tests passed, but the lint step failed before they ran. `test_v0104.py` and `test_v0105.py` imported the purple fixtures from `test_v080.py` by name and then took them as arguments, which pytest accepts and ruff reports as a redefinition (F811), twelve times. The shared fixtures are now registered once in `tests/conftest.py`, and the test files import nothing they do not call. The suite was run locally before each of those releases; `ruff check` was not, and now is.
+
+Fixed: **`logs/` was not ignored**, so the target's SSH log from the v1.0.0 run was committed as `logs/lab131/ssh.log`. It holds only lab addresses and the same lines kept on purpose in `tests/fixtures/live-20261023/`, but a log copied off a target is the target's data and should never be published by accident. `logs/` is now in `.gitignore` and the file is removed from the repository (it stays on disk).
+
 ## [1.0.0] - 2026-10-23
 
 **Proven end to end.** On 2026-10-23 all three agents ran against a homelab VM (192.168.92.131, SSH only) from Kali (192.168.92.129), and the result went into Shadowfax:
