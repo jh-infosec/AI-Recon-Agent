@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.10.4] - 2026-10-23
+
+From the first live end-to-end run: recon against a homelab VM (192.168.92.131, SSH only), a hunt over that VM's SSH log, then purple over the two reports. Recon and hunt worked. The hunt found both nmap scans as two identical bursts of SSH negotiation failures two minutes apart, named them fingerprinting rather than brute force, and all three of its findings passed the envelope's verbatim-evidence filter (`envelope_excluded: []`). It also caught something in the lab itself: the VM's clock writes local time labelled as UTC, two hours off.
+
+Fixed: **purple threw away three complete answers.** Every `finish_purple` attempt was rejected with "steps must be a list", and the run ended with no analysis after about $0.20. The cost showed full answers (about 2,800 output tokens a call, far below the limit) and the narrative passed its check, so the content was there. A forced tool call can return a nested array as a string holding its JSON, and nothing decoded it. `decode_lists()` now does, for `steps` and `detection_ideas`, before any check, and the report notes that it happened. Quotes are untouched by the decoding, so the verbatim check still sees the log line as written. The retry message now asks for a JSON array, not a string containing JSON.
+
+Fixed: **a failed purple run could not be diagnosed without paying again.** Nothing recorded what the model sent. Each rejected payload's field types and a short excerpt now go in the JSON report under `rejected` (and a line per attempt in the Markdown), a rejection says what the field actually held (`got str: '[{"step": 1, ...'`), a reply cut off at `max_tokens` says so, and a run with no usable answer says so on the console instead of ending on "Done".
+
+Tests: 15 new (892 total, 4 skipped without a Shadowfax checkout).
+
 ## [0.10.3] - 2026-10-23
 
 From the first homelab run. The allowlist held 192.168.92.129, which was the Kali machine's own address, so the agent scanned itself, found nothing listening, and spent ten minutes on a full-range scan before concluding the network was broken. The run did confirm one thing live: **prompt caching works** (4,703 input tokens read from the cache in a three-turn session). It also exposed three defects.

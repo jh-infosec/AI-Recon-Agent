@@ -717,6 +717,7 @@ class PurpleReport:
         self.json_path = REPORTS_DIR / f"{base}.json"
         self._notes: list = []
         self._incomplete: str | None = None
+        self._rejected: list = []
         self._unverified_returned: list = []
         self._analysis: dict | None = None
         self._steps: list = []
@@ -728,6 +729,20 @@ class PurpleReport:
 
     def log_incomplete(self, reason: str):
         self._incomplete = reason
+
+    def log_rejected(self, problem: str, payload):
+        """
+        A finish_purple payload that failed its structural check, kept so a
+        failed run can be diagnosed from the report instead of paid for again.
+        The types of the top-level fields, and a short excerpt, are enough.
+        """
+        shape = ({k: type(v).__name__ for k, v in payload.items()}
+                 if isinstance(payload, dict) else type(payload).__name__)
+        self._rejected.append({
+            "problem": str(problem)[:500],
+            "shape": shape,
+            "excerpt": json.dumps(payload, default=str)[:1500],
+        })
 
     def log_unverified_return(self, steps: list):
         self._unverified_returned = list(steps)
@@ -789,6 +804,7 @@ class PurpleReport:
                         and not self._unverified,
             "incomplete_reason": self._incomplete,
             "notes": self._notes,
+            "rejected": self._rejected,
             "unverified_returned": self._unverified_returned,
             "unverified_steps": self._unverified,
             "narrative": (self._analysis or {}).get("narrative"),
@@ -809,6 +825,10 @@ class PurpleReport:
             out.append(f"> {n}\n")
         if self._incomplete:
             out.append(f"## Incomplete\n\n{self._incomplete}\n")
+            for i, rej in enumerate(self._rejected, 1):
+                out.append(f"- Attempt {i} rejected: {rej['problem']}")
+            if self._rejected:
+                out.append("")
         if self._unverified_returned:
             out.append("The analysis was returned once because steps "
                        f"{', '.join(map(str, self._unverified_returned))} quoted evidence "

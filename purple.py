@@ -181,6 +181,40 @@ def quote_verified(quote: str, corpus: str) -> bool:
     return all(len(line) >= MIN_QUOTE_CHARS and line in corpus for line in lines)
 
 
+def decode_lists(payload) -> tuple:
+    """
+    (payload, decoded_fields). A forced tool call sometimes returns a nested
+    array as a string holding the JSON for it: `"steps": "[{\\"step\\": 1, ...}]"`.
+    The first live purple run (v0.10.3) lost all three attempts to exactly
+    this, each rejected as "steps must be a list", at a cost of about $0.20.
+    The content was there; only its encoding was wrong. A string that parses
+    to a list is decoded here, before any check, and the report notes it.
+    Anything else is left alone for check_payload to reject.
+    """
+    if not isinstance(payload, dict):
+        return payload, []
+    out, decoded = dict(payload), []
+    for key in ("steps", "detection_ideas"):
+        value = out.get(key)
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except ValueError:
+                continue
+            if isinstance(parsed, list):
+                out[key] = parsed
+                decoded.append(key)
+    return out, decoded
+
+
+def describe(value) -> str:
+    """What a field actually held, for a rejection message a person can act on."""
+    if value is None:
+        return "it was missing"
+    text = str(value).replace("\n", " ")
+    return f"got {type(value).__name__}: {text[:80]!r}"
+
+
 def check_payload(payload: dict, step_ids: list, corpus: str) -> tuple:
     """
     Returns (structural_problem, unverified_steps).
@@ -197,7 +231,8 @@ def check_payload(payload: dict, step_ids: list, corpus: str) -> tuple:
         return "narrative is missing or too short", []
     answers = payload.get("steps")
     if not isinstance(answers, list):
-        return "steps must be a list with one entry per recon step", []
+        return ("steps must be a list with one entry per recon step "
+                f"({describe(answers)})"), []
 
     seen_ids, unverified = [], []
     for a in answers:
@@ -227,8 +262,8 @@ def check_payload(payload: dict, step_ids: list, corpus: str) -> tuple:
 
 def retry_message(problem: str) -> str:
     return (
-        f"finish_purple was rejected: {problem}. Call it again with one entry in "
-        "`steps` for every recon step, each marked seen_in_logs true (with the "
+        f"finish_purple was rejected: {problem}. Call it again with `steps` as "
+        "a JSON array (not a string containing JSON), one entry for every recon step, each marked seen_in_logs true (with the "
         "exact log line quoted in `evidence`) or false (with a `note` on why "
         "nothing was logged), and the full story in `narrative`."
     )
@@ -438,10 +473,17 @@ def main():
         messages.append({"role": "assistant", "content": [
             {"type": "tool_use", "id": block.id, "name": block.name, "input": block.input}]})
         # Checked as written: normalising first would rewrite the quotes.
-        payload = block.input
+        payload, decoded = decode_lists(block.input)
+        if decoded:
+            report.note(f"The model sent {', '.join(decoded)} as JSON text rather "
+                        "than a list; it was decoded before checking.")
         problem, unverified = check_payload(payload, step_ids, corpus)
 
         if problem:
+            stop = getattr(response, "stop_reason", None)
+            if stop == "max_tokens":
+                problem += f"; the reply was cut off at max_tokens ({MAX_TOKENS})"
+            report.log_rejected(problem, block.input)
             print(console.warn(f"finish_purple rejected ({problem}); asking again."))
             messages.append({"role": "user", "content": [{
                 "type": "tool_result", "tool_use_id": block.id, "is_error": True,
@@ -471,6 +513,8 @@ def main():
         print(console.note(str(path)))
     print(console.note(f"{t['turns']} call(s), estimated ${t['estimated_cost_usd']:.4f}"))
     if accepted is None:
+        print(console.bad("no usable analysis: every attempt was rejected. The "
+                          "JSON report's `rejected` list shows what the model sent."))
         sys.exit(EXIT_INCOMPLETE)
     seen = sum(1 for a in accepted["steps"] if a.get("seen_in_logs"))
     print(console.agent("purple", f"{seen} of {len(steps)} steps left a trace in the logs; "
