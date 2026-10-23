@@ -578,8 +578,9 @@ def main():
                           "JSON report's `rejected` list shows what the model sent."))
         sys.exit(EXIT_INCOMPLETE)
     seen = sum(1 for a in accepted["steps"] if a.get("seen_in_logs"))
+    blind = len(steps) - seen
     print(console.agent("purple", f"{seen} of {len(steps)} steps left a trace in the logs; "
-                                  f"{len(steps) - seen} were blind spots."))
+                                  f"{blind} {'was a blind spot' if blind == 1 else 'were blind spots'}."))
     if unverified:
         print(console.warn(f"step(s) {unverified} cite evidence not found in the hunt "
                            f"record and are reported as unproven"))

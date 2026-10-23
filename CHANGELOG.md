@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.0.0] - 2026-10-23
+
+**Proven end to end.** On 2026-10-23 all three agents ran against a homelab VM (192.168.92.131, SSH only) from Kali (192.168.92.129), and the result went into Shadowfax:
+
+- **Recon** (v0.10.3): a top-1000 scan, a full 65,535-port sweep to make sure nothing was hiding, and a searchsploit lookup. One open port, SSH, OpenSSH 9.3p2. About $0.06, with 15,186 input tokens read from the prompt cache.
+- **Hunt** (v0.10.3), over the VM's sshd journal: both scans found as two identical bursts of eight pre-authentication failures two minutes apart, identified as SSH fingerprinting (nmap's `ssh2-enum-algos` and `ssh-hostkey`) and not brute force, with a search confirming no password was ever tried. All three findings passed the envelope's verbatim-evidence filter.
+- **Purple** (v0.10.5): both scans matched to their log bursts with quotes verified word for word, and the searchsploit lookup correctly named the blind spot, since it never touched the target. It matched on content despite the VM's clock writing local time labelled as UTC, two hours off. One call, about $0.09.
+- **Shadowfax** v0.26.0 ingested both envelopes through its own validator: 1 recon finding (`open_port`, validated) and 3 hunt findings (`hunt_t1595`, unvalidated, as a log line's contents should be).
+
+Getting there took three releases the same day: v0.10.3 (a failed check printed PASS), v0.10.4 and v0.10.5 (purple lost three complete answers to a schema-order problem, found from its own record of what was rejected).
+
+Added: **the run, kept.** `tests/fixtures/live-20261023/` holds the recon, hunt and purple reports, both envelopes and the log, exactly as written. `tests/test_v100.py` re-checks them against the current code: every purple quote still verifies, the purple answer still passes its own check, both envelopes rebuild identically from their reports, every log line parses, and, when a Shadowfax checkout is present, Shadowfax still accepts both envelopes.
+
+Fixed: purple said "1 were blind spots".
+
+Not exercised by this run, because an SSH-only box gives them nothing to do: the early-finish return (v0.7.3), the web and AD tools, and target-aware wordlists. The web and AD tools have run live on earlier boxes; the other two are tested offline only. `ROADMAP.md` puts a richer lab next.
+
+Tests: 13 new (909 passed, 6 skipped without a Shadowfax checkout; 915 with one).
+
 ## [0.10.5] - 2026-10-23
 
 From the second live purple run. v0.10.4 guessed the first failure's cause (a list sent as JSON text) and guessed wrong, but it also recorded what the model sent, and that record settled it without another paid run: all three answers were `{narrative, detection_ideas}` with **no `steps` field at all**. The narrative held the whole step-by-step analysis.

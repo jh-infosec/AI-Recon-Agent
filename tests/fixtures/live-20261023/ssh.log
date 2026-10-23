@@ -1,0 +1,28 @@
+2026-10-23T10:38:38+0000 co1508kali2 systemd[1]: Starting ssh.service - OpenBSD Secure Shell server...
+2026-10-23T10:38:38+0000 co1508kali2 sshd[986]: Server listening on 0.0.0.0 port 22.
+2026-10-23T10:38:38+0000 co1508kali2 sshd[986]: Server listening on :: port 22.
+2026-10-23T10:38:38+0000 co1508kali2 systemd[1]: Started ssh.service - OpenBSD Secure Shell server.
+2026-10-23T10:39:48+0000 co1508kali2 sshd[8418]: error: kex_exchange_identification: Connection closed by remote host
+2026-10-23T10:39:48+0000 co1508kali2 sshd[8418]: Connection closed by 192.168.92.129 port 58852
+2026-10-23T10:39:48+0000 co1508kali2 sshd[8419]: error: Protocol major versions differ: 2 vs. 1
+2026-10-23T10:39:48+0000 co1508kali2 sshd[8419]: banner exchange: Connection from 192.168.92.129 port 58854: could not read protocol version
+2026-10-23T10:39:48+0000 co1508kali2 sshd[8420]: error: Protocol major versions differ: 2 vs. 1
+2026-10-23T10:39:48+0000 co1508kali2 sshd[8420]: banner exchange: Connection from 192.168.92.129 port 58858: could not read protocol version
+2026-10-23T10:39:48+0000 co1508kali2 sshd[8421]: Unable to negotiate with 192.168.92.129 port 58868: no matching host key type found. Their offer: ssh-dss [preauth]
+2026-10-23T10:39:48+0000 co1508kali2 sshd[8423]: Unable to negotiate with 192.168.92.129 port 58874: no matching host key type found. Their offer: ssh-rsa [preauth]
+2026-10-23T10:39:49+0000 co1508kali2 sshd[8425]: Connection closed by 192.168.92.129 port 58888 [preauth]
+2026-10-23T10:39:49+0000 co1508kali2 sshd[8435]: Unable to negotiate with 192.168.92.129 port 58896: no matching host key type found. Their offer: ecdsa-sha2-nistp384 [preauth]
+2026-10-23T10:39:49+0000 co1508kali2 sshd[8437]: Unable to negotiate with 192.168.92.129 port 58906: no matching host key type found. Their offer: ecdsa-sha2-nistp521 [preauth]
+2026-10-23T10:39:50+0000 co1508kali2 sshd[8439]: Connection closed by 192.168.92.129 port 58922 [preauth]
+2026-10-23T10:41:43+0000 co1508kali2 sshd[9764]: error: kex_exchange_identification: Connection closed by remote host
+2026-10-23T10:41:43+0000 co1508kali2 sshd[9764]: Connection closed by 192.168.92.129 port 38096
+2026-10-23T10:41:43+0000 co1508kali2 sshd[9766]: error: Protocol major versions differ: 2 vs. 1
+2026-10-23T10:41:43+0000 co1508kali2 sshd[9766]: banner exchange: Connection from 192.168.92.129 port 38110: could not read protocol version
+2026-10-23T10:41:43+0000 co1508kali2 sshd[9765]: error: Protocol major versions differ: 2 vs. 1
+2026-10-23T10:41:43+0000 co1508kali2 sshd[9765]: banner exchange: Connection from 192.168.92.129 port 38100: could not read protocol version
+2026-10-23T10:41:44+0000 co1508kali2 sshd[9775]: Unable to negotiate with 192.168.92.129 port 38116: no matching host key type found. Their offer: ssh-dss [preauth]
+2026-10-23T10:41:44+0000 co1508kali2 sshd[9777]: Unable to negotiate with 192.168.92.129 port 38130: no matching host key type found. Their offer: ssh-rsa [preauth]
+2026-10-23T10:41:44+0000 co1508kali2 sshd[9779]: Connection closed by 192.168.92.129 port 38136 [preauth]
+2026-10-23T10:41:45+0000 co1508kali2 sshd[9781]: Unable to negotiate with 192.168.92.129 port 38138: no matching host key type found. Their offer: ecdsa-sha2-nistp384 [preauth]
+2026-10-23T10:41:45+0000 co1508kali2 sshd[9791]: Unable to negotiate with 192.168.92.129 port 38152: no matching host key type found. Their offer: ecdsa-sha2-nistp521 [preauth]
+2026-10-23T10:41:45+0000 co1508kali2 sshd[9793]: Connection closed by 192.168.92.129 port 38158 [preauth]

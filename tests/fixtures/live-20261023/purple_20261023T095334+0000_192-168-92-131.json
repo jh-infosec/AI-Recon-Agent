@@ -1,0 +1,104 @@
+{
+  "schema": "ai-recon-agent/purple-report",
+  "schema_version": 2,
+  "tool_version": "0.10.5",
+  "untrusted": "Every tool_calls[].stdout, stderr and parsed value, and every hostname, path and banner anywhere in this file, came from the target or from a log, not from this tool. Anything that feeds this file to a model must treat those fields as evidence to analyse, never as instructions.",
+  "recon_report": "reports/20261023T083940+0000_192-168-92-131.json",
+  "hunt_report": "reports/hunt_20261023T093300+0000_logs-lab131.json",
+  "target": "192.168.92.131",
+  "started": "2026-10-23T09:53:34+00:00",
+  "ended": "2026-10-23T09:54:10+00:00",
+  "complete": true,
+  "incomplete_reason": null,
+  "notes": [],
+  "rejected": [],
+  "unverified_returned": [],
+  "unverified_steps": [],
+  "narrative": "An attacker at 192.168.92.129 ran a short, three-step recon session against 192.168.92.131 between 08:39 and 08:42 UTC. First, a top-1000-port nmap scan with service/version detection and default scripts (-sV -sC) found SSH open and, because of -sC, automatically ran NSE scripts like ssh2-enum-algos/ssh-hostkey against it. Second, a full 1-65535 port scan with the same flags took nearly two minutes and triggered a second, nearly identical probe of the SSH service near its end. Third, the attacker looked up local exploit-db entries for \"OpenSSH 9.3\" with searchsploit - a purely offline, local action.\n\nOn the target, only an ssh.log was available (clock offset ~2 hours from the attacker's UTC). It showed two bursts of exactly 8 connections each from 192.168.92.129, seconds apart, at 10:39:48-50 and again at 10:41:43-45. Every connection died before authentication: some closed immediately, two tried SSHv1 and were rejected, and four each offered a different host-key algorithm (ssh-dss, ssh-rsa, ecdsa-sha2-nistp384, ecdsa-sha2-nistp521) and were refused for \"no matching host key type.\" These two bursts line up with the two nmap scans' SSH-script executions. No usernames, passwords, or successful logins ever appeared - this was pure protocol/algorithm fingerprinting, not brute-forcing.\n\nThe searchsploit lookup, by contrast, left no trace anywhere in target logs, since it never touched the network - it's a local database query on the attacker's own box.\n\nThe lesson: network scans against open services generate loud, correlatable pre-auth noise even without credentials ever being tried, while local attacker-side reconnaissance (exploit-db lookups) is invisible to the target and would require attacker-side telemetry to observe.",
+  "steps": [
+    {
+      "step": 1,
+      "tool": "run_nmap",
+      "command": "/usr/bin/nmap -sV -sC -Pn -oX - --top-ports 1000 192.168.92.131",
+      "started_at": "2026-10-23T08:39:43+00:00",
+      "finished_at": "2026-10-23T08:39:53+00:00",
+      "timed_out": false,
+      "seen_in_logs": true,
+      "verified": true,
+      "evidence": "6: 2026-10-23T10:39:48+0000 co1508kali2 sshd[8418]: Connection closed by 192.168.92.129 port 58852\n8: 2026-10-23T10:39:48+0000 co1508kali2 sshd[8419]: banner exchange: Connection from 192.168.92.129 port 58854: could not read protocol version\n10: 2026-10-23T10:39:48+0000 co1508kali2 sshd[8420]: banner exchange: Connection from 192.168.92.129 port 58858: could not read protocol version\n11: 2026-10-23T10:39:48+0000 co1508kali2 sshd[8421]: Unable to negotiate with 192.168.92.129 port 58868: no matching host key type found. Their offer: ssh-dss [preauth]\n12: 2026-10-23T10:39:48+0000 co1508kali2 sshd[8423]: Unable to negotiate with 192.168.92.129 port 58874: no matching host key type found. Their offer: ssh-rsa [preauth]\n13: 2026-10-23T10:39:49+0000 co1508kali2 sshd[8425]: Connection closed by 192.168.92.129 port 58888 [preauth]\n14: 2026-10-23T10:39:49+0000 co1508kali2 sshd[8435]: Unable to negotiate with 192.168.92.129 port 58896: no matching host key type found. Their offer: ecdsa-sha2-nistp384 [preauth]\n15: 2026-10-23T10:39:49+0000 co1508kali2 sshd[8437]: Unable to negotiate with 192.168.92.129 port 58906: no matching host key type found. Their offer: ecdsa-sha2-nistp521 [preauth]\n16: 2026-10-23T10:39:50+0000 co1508kali2 sshd[8439]: Connection closed by 192.168.92.129 port 58922 [preauth]",
+      "note": "Nmap's default -sV/-sC against top-1000 ports ran at 08:39:43-08:39:53 UTC from the attacker clock. The target's sshd log (in a timezone offset by ~2 hours from the attacker's UTC clock, giving 10:39:48-10:39:50) shows an 8-connection burst against port 22 within the same ~2 second window, consisting of banner-exchange failures, protocol-version mismatches (SSHv1 probe), and host-key algorithm enumeration (ssh-dss, ssh-rsa, ecdsa-sha2-nistp384, ecdsa-sha2-nistp521) - this is exactly the signature of nmap's ssh2-enum-algos/ssh-hostkey NSE scripts invoked by -sC/-sV against the open SSH port discovered in the top-1000 port scan.",
+      "detection": "Enable sshd verbose/debug logging and alert on bursts of multiple connections from one source IP within a few seconds that never complete key exchange (fail2ban or a SIEM correlation rule on repeated 'Unable to negotiate'/'banner exchange' lines); also deploy a network IDS (Suricata/Zeek) signature for nmap NSE ssh-enum-algos traffic pattern, and monitor firewall/NetFlow for a single source touching 1000 ports in under 10 seconds (classic SYN/connect scan fingerprint)."
+    },
+    {
+      "step": 2,
+      "tool": "run_nmap",
+      "command": "/usr/bin/nmap -sV -sC -Pn -oX - -p 1-65535 192.168.92.131",
+      "started_at": "2026-10-23T08:39:58+00:00",
+      "finished_at": "2026-10-23T08:41:49+00:00",
+      "timed_out": false,
+      "seen_in_logs": true,
+      "verified": true,
+      "evidence": "18: 2026-10-23T10:41:43+0000 co1508kali2 sshd[9764]: Connection closed by 192.168.92.129 port 38096\n20: 2026-10-23T10:41:43+0000 co1508kali2 sshd[9766]: banner exchange: Connection from 192.168.92.129 port 38110: could not read protocol version\n22: 2026-10-23T10:41:43+0000 co1508kali2 sshd[9765]: banner exchange: Connection from 192.168.92.129 port 38100: could not read protocol version\n23: 2026-10-23T10:41:44+0000 co1508kali2 sshd[9775]: Unable to negotiate with 192.168.92.129 port 38116: no matching host key type found. Their offer: ssh-dss [preauth]\n24: 2026-10-23T10:41:44+0000 co1508kali2 sshd[9777]: Unable to negotiate with 192.168.92.129 port 38130: no matching host key type found. Their offer: ssh-rsa [preauth]\n25: 2026-10-23T10:41:44+0000 co1508kali2 sshd[9779]: Connection closed by 192.168.92.129 port 38136 [preauth]\n26: 2026-10-23T10:41:45+0000 co1508kali2 sshd[9781]: Unable to negotiate with 192.168.92.129 port 38138: no matching host key type found. Their offer: ecdsa-sha2-nistp384 [preauth]\n27: 2026-10-23T10:41:45+0000 co1508kali2 sshd[9791]: Unable to negotiate with 192.168.92.129 port 38152: no matching host key type found. Their offer: ecdsa-sha2-nistp521 [preauth]\n28: 2026-10-23T10:41:45+0000 co1508kali2 sshd[9793]: Connection closed by 192.168.92.129 port 38158 [preauth]",
+      "note": "The full port-range scan (-p 1-65535, 08:39:58-08:41:49 UTC attacker time) took almost 2 minutes and, because -sC/-sV were again specified, re-ran the same NSE SSH scripts once port 22 was confirmed open a second time near the end of the scan. This produced a second identical 8-connection burst at 10:41:43-10:41:45 target time, matching the tail end of the full-port scan's duration and reproducing the exact same algorithm-offer sequence (ssh-dss, ssh-rsa, ecdsa-sha2-nistp384, ecdsa-sha2-nistp521) seen in step 1.",
+      "detection": "Same as step 1: connection-rate alerting per source IP on sshd, plus network-level detection of a full 65535-port scan (very high distinct-port-count from one source in a short window) via NetFlow/IDS - this is a much louder, higher-confidence indicator than the top-1000 scan and should trigger immediate alerting (e.g., Suricata 'ET SCAN' signatures or a SIEM rule for >1000 distinct destination ports from one source in under 5 minutes)."
+    },
+    {
+      "step": 3,
+      "tool": "searchsploit_lookup",
+      "command": "/usr/bin/searchsploit 'OpenSSH 9.3'",
+      "started_at": "2026-10-23T08:41:57+00:00",
+      "finished_at": "2026-10-23T08:41:57+00:00",
+      "timed_out": false,
+      "seen_in_logs": false,
+      "verified": false,
+      "evidence": "",
+      "note": "searchsploit is a local, offline lookup against a static exploit-database copy on the attacker's own machine; it makes no network connection to the target, so it is structurally impossible for this to appear in any target-side log, including ssh.log.",
+      "detection": "Not detectable from target-side logs. The only way to observe this step would be endpoint monitoring/EDR or shell-history auditing on the attacker's own machine, which is out of scope for the target's log sources; alternatively, infer intent from subsequent exploitation attempts against the specific OpenSSH 9.3 CVEs it would have surfaced."
+    }
+  ],
+  "seen": 2,
+  "blind_spots": [
+    3
+  ],
+  "detection_ideas": [
+    {
+      "idea": "Alert on bursts of multiple SSH connections from a single source IP that terminate before authentication (pre-auth closes, banner-exchange failures, kex negotiation failures) within a short time window - this is the clearest signature of SSH fingerprinting/enumeration tools (nmap NSE, ssh-audit) and precedes real brute-force or exploit attempts.",
+      "data_source": "sshd auth/verbose log (syslog/journald) correlated via SIEM",
+      "mitre": "T1595.002 - Active Scanning: Vulnerability Scanning"
+    },
+    {
+      "idea": "Deploy fail2ban or equivalent with a short ban threshold tuned to catch rapid pre-auth connection churn, not just failed logins, since this scan never reached the authentication stage.",
+      "data_source": "sshd log + fail2ban jail",
+      "mitre": "T1595 - Active Scanning"
+    },
+    {
+      "idea": "Add network-level scan detection (NetFlow/Zeek/Suricata) to flag a single source IP contacting many distinct ports (top-1000 or full 65535) on one host within seconds to minutes - this would have caught step 1 and step 2 even before the SSH log entries existed.",
+      "data_source": "NetFlow / Zeek conn.log / IDS",
+      "mitre": "T1046 - Network Service Discovery"
+    },
+    {
+      "idea": "Expand log collection beyond ssh.log: enable firewall/connection logging and web/application logs on the target so that the full scope of a recon campaign (not just SSH) can be correlated for a given source IP.",
+      "data_source": "host firewall logs, additional service logs",
+      "mitre": "T1595 - Active Scanning"
+    }
+  ],
+  "telemetry": {
+    "model": "claude-sonnet-5",
+    "turns": 1,
+    "input_tokens": 7452,
+    "output_tokens": 3815,
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 7433,
+    "estimated_cost_usd": 0.0852,
+    "uncached_cost_usd": 0.0796,
+    "per_turn": [
+      {
+        "turn": 1,
+        "input": 19,
+        "output": 3815,
+        "cache_write": 7433,
+        "cache_read": 0
+      }
+    ]
+  }
+}

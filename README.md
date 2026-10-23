@@ -1,6 +1,6 @@
 # ai-recon-agent
 
-**v0.10.5**
+**v1.0.0**
 
 ai-recon-agent is a small security study kit with two halves: a **red-team
 recon agent** for practicing enumeration on machines you're authorized to
@@ -317,10 +317,13 @@ has not established that the blank is real.
 
 `ROADMAP.md` is the source of truth for what ships when, and
 `architecture.md` carries the design reasoning, the known constraints and a
-record of every defect cleared so far. What remains for v1.0.0 is proof
-rather than features: one live run of everything since v0.7.3 against a
-homelab VM, with its reports kept as test fixtures and its findings ingested
-into a running Shadowfax.
+record of every defect cleared so far.
+
+v1.0.0 is the first release proven end to end on a real machine: recon, a
+hunt over the target's own logs, purple matching the two, and both findings
+envelopes accepted by a running Shadowfax. That run is kept in
+`tests/fixtures/live-20261023/` and re-checked by the test suite. Still to
+come: Windows logs (v0.9.1), from a real export.
 
 Exploitation, payload generation and anything that writes to a target are
 explicitly not planned, at any version.

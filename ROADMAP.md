@@ -170,15 +170,15 @@ better, which is a question for a live comparison, not a token count.
 - Target-aware wordlists (`wordgen.py`), the old v0.7.6.
 - The findings envelope and its specification, from the old v1.0.0.
 
-## v0.8.0 - purple (shipped, awaiting a live pair)
+## v0.8.0 - purple (shipped, proven live in v1.0.0)
 
 - Feed a recon report and a hunt report of the same box to the model and have
   it narrate the engagement from both sides: what was done, what it looked
   like in the logs, and what would have detected it earlier.
 - Every step answered and every evidence quote checked against the hunt
   record, in code.
-- Still to do: run it on a real pair from the homelab VM and keep that pair
-  as fixtures.
+- Run on a real pair from the homelab VM in v1.0.0; the pair is kept in
+  `tests/fixtures/live-20261023/`.
 
 This is the feature with no counterpart in the commercial tools this project
 takes its shape from, and it is the reason for keeping both halves in one
@@ -204,16 +204,26 @@ repository.
   tested against Shadowfax's own validator.
 - Shadowfax's suite ingests two envelopes from this emitter.
 
-## v1.0.0 - proven
+## v1.0.0 - proven (shipped)
 
-The packaging shipped in v0.10.0, and the envelope in v0.10.1, conforming
-to the specification Shadowfax already implements; Shadowfax's own suite now
-ingests this tool's envelopes. What is left is what makes a 1.0 honest:
+One live run on the homelab VM, end to end: recon, a hunt over the target's
+own sshd log, purple over the two, and both findings envelopes ingested into
+a running Shadowfax v0.26.0 and accepted. The run's reports, envelopes and log
+are kept as fixtures and re-checked offline by `tests/test_v100.py`. Getting
+there took v0.10.3 to v0.10.5, each fixing what a live run exposed.
 
-- A live run of everything since v0.7.3 on the homelab VM, with the recon
-  report, hunt report, purple report and logs kept as fixtures, and the
-  envelopes from that run ingested into a running Shadowfax.
-- Windows logs (v0.9.1), if the homelab includes a Windows box.
+Not exercised by that run, because an SSH-only box gives them nothing to do:
+the early-finish return (v0.7.3), the web and AD tools, and target-aware
+wordlists. The web and AD tools have been run live on earlier boxes; the
+early-finish return and the wordlists have only been tested offline, and
+stay that way until a box gives them something to do.
+
+## v1.1.0 - a richer lab
+
+- A second live run against a target with a web server and firewall logging,
+  so the hunt has web and port-scan traces as well as SSH, and purple has more
+  than three steps to match. Its files become a second fixture set.
+- Windows logs (v0.9.1), if the homelab gains a Windows box.
 
 ## Not planned
 

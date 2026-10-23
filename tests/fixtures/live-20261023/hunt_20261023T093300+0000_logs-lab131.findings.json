@@ -1,0 +1,46 @@
+{
+  "envelope_version": "1.0",
+  "generated": "2026-10-23T09:33:52Z",
+  "source": {
+    "tool": "ai-recon-agent",
+    "version": "0.10.3",
+    "run_id": "16dec1a2"
+  },
+  "subject": {
+    "kind": "log_workspace",
+    "id": "logs/lab131",
+    "label": "logs/lab131"
+  },
+  "findings": [
+    {
+      "id": "34d505568cf78e44",
+      "key": "hunt_t1595",
+      "severity": "medium",
+      "title": "SSH protocol/host-key algorithm enumeration scan from 192.168.92.129",
+      "evidence": "2026-10-23T10:39:48+0000 co1508kali2 sshd[8421]: Unable to negotiate with 192.168.92.129 port 58868: no matching host key type found. Their offer: ssh-dss [preauth]",
+      "validated": false,
+      "mitre": "T1595",
+      "recommendation": "Treat 192.168.92.129 as a scanning source. Correlate with firewall/NetFlow and any web/other service logs for this IP (none were available in this workspace) to see if the scan expanded beyond SSH. Consider rate-limiting or blocking repeat scan sources at the perimeter, and ensure fail2ban or equivalent is enabled to throttle rapid repeated connections even when they never reach authentication."
+    },
+    {
+      "id": "1696410db95ae4b2",
+      "key": "hunt_t1595",
+      "severity": "low",
+      "title": "Legacy/weak algorithm probing (SSHv1 downgrade attempt, ssh-dss)",
+      "evidence": "2026-10-23T10:39:48+0000 co1508kali2 sshd[8419]: error: Protocol major versions differ: 2 vs. 1",
+      "validated": false,
+      "mitre": "T1595",
+      "recommendation": "No action needed on the server itself since it correctly rejected SSHv1 and the ssh-dss/weak key types - this confirms the server configuration is hardened. Document this as a positive control validation, and keep monitoring for any future client that manages to negotiate a legacy algorithm successfully."
+    },
+    {
+      "id": "5249268bdb6931c8",
+      "key": "hunt_t1595",
+      "severity": "low",
+      "title": "Repeated identical scan burst (two waves ~2 minutes apart)",
+      "evidence": "2026-10-23T10:41:43+0000 co1508kali2 sshd[9764]: error: kex_exchange_identification: Connection closed by remote host",
+      "validated": false,
+      "mitre": "T1595",
+      "recommendation": "The repetition suggests an automated scanning tool or script re-run rather than manual probing. Flag 192.168.92.129 for continued monitoring in case it returns with an actual authentication attempt (username/password) following this recon phase."
+    }
+  ]
+}

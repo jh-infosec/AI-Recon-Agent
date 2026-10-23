@@ -1,0 +1,28 @@
+{
+  "envelope_version": "1.0",
+  "generated": "2026-10-23T08:42:16Z",
+  "source": {
+    "tool": "ai-recon-agent",
+    "version": "0.10.3",
+    "run_id": "93ae3335"
+  },
+  "subject": {
+    "kind": "host",
+    "id": "192.168.92.131",
+    "label": "192.168.92.131"
+  },
+  "findings": [
+    {
+      "id": "2ba07a6f27694726",
+      "key": "open_port",
+      "severity": "info",
+      "title": "Port 22/tcp is open",
+      "evidence": "22/tcp open ssh OpenSSH 9.3p2 Debian 1",
+      "validated": true,
+      "data": {
+        "port": 22,
+        "service_claimed": "ssh OpenSSH 9.3p2 Debian 1"
+      }
+    }
+  ]
+}

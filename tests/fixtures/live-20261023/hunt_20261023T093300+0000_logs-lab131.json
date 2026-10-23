@@ -1,0 +1,245 @@
+{
+  "schema": "ai-recon-agent/hunt-report",
+  "schema_version": 2,
+  "tool_version": "0.10.3",
+  "untrusted": "Every tool_calls[].stdout, stderr and parsed value, and every hostname, path and banner anywhere in this file, came from the target or from a log, not from this tool. Anything that feeds this file to a model must treat those fields as evidence to analyse, never as instructions.",
+  "workspace": "logs/lab131",
+  "started": "2026-10-23T09:33:00+00:00",
+  "ended": "2026-10-23T09:33:52+00:00",
+  "complete": true,
+  "incomplete_reason": null,
+  "summary": {
+    "summary": "Scope: single log source available, ssh.log (OpenSSH server on host \"co1508kali2\"), 28 lines covering 2026-10-23T10:38:38Z to 10:41:45Z. No other logs (web, other auth) were present in this workspace.\n\nTimeline of the incident:\n- 10:38:38Z: sshd starts normally, begins listening on port 22 (IPv4 and IPv6). This is baseline service start, not attacker activity.\n- 10:39:48Z - 10:39:50Z: A burst of 8 connections from 192.168.92.129 hits the SSH daemon within 2 seconds. None of these complete a normal SSH handshake:\n  * One connection fails at \"kex_exchange_identification\" (client closed before banner exchange finished).\n  * Two connections fail with \"Protocol major versions differ: 2 vs. 1\" - i.e. the client tried to speak SSHv1, which this server does not support.\n  * Four connections fail with \"Unable to negotiate... no matching host key type found\", each offering a different host key algorithm in turn: ssh-dss, ssh-rsa, ecdsa-sha2-nistp384, ecdsa-sha2-nistp521.\n  * Remaining connections are closed immediately [preauth] (before authentication even started).\n- 10:41:43Z - 10:41:45Z: The exact same pattern repeats from the same IP, 192.168.92.129 - another 8-connection burst testing SSHv1 fallback plus the same four host-key algorithms in the same order.\n\nInterpretation: every single failure here happens during the pre-authentication key-exchange/protocol-negotiation phase. No username or password was ever submitted (auth_summary found 0 failed logins, and a direct search for Accepted/Failed/Invalid user/sudo/useradd returned zero matches). This is NOT a credential brute-force attempt - it is a classic SSH fingerprinting/enumeration scan, consistent with tools like `nmap --script ssh2-enum-algos,ssh-hostkey` or `ssh-audit`, which deliberately iterate through SSH protocol versions and host-key algorithms to map what the server supports (useful for an attacker to pick an exploit or downgrade path, or to catalog weak/legacy algorithms such as ssh-dss and SSHv1 that this server correctly rejected). The two bursts ~2 minutes apart suggest either a retried scan or two scan modules run back-to-back by the same tool/operator.\n\nNo evidence in this log of a successful login, privilege escalation, account creation, or lateral movement - the activity is confined to recon against the SSH service itself. Because only ssh.log was provided, I cannot confirm whether 192.168.92.129 was also seen hitting a web service or other hosts; that correlation could not be performed here due to lack of other log sources.",
+    "findings": [
+      {
+        "title": "SSH protocol/host-key algorithm enumeration scan from 192.168.92.129",
+        "severity": "medium",
+        "mitre": "T1595 - Active Scanning",
+        "evidence": "2026-10-23T10:39:48+0000 co1508kali2 sshd[8421]: Unable to negotiate with 192.168.92.129 port 58868: no matching host key type found. Their offer: ssh-dss [preauth]",
+        "recommendation": "Treat 192.168.92.129 as a scanning source. Correlate with firewall/NetFlow and any web/other service logs for this IP (none were available in this workspace) to see if the scan expanded beyond SSH. Consider rate-limiting or blocking repeat scan sources at the perimeter, and ensure fail2ban or equivalent is enabled to throttle rapid repeated connections even when they never reach authentication."
+      },
+      {
+        "title": "Legacy/weak algorithm probing (SSHv1 downgrade attempt, ssh-dss)",
+        "severity": "low",
+        "mitre": "T1595 - Active Scanning",
+        "evidence": "2026-10-23T10:39:48+0000 co1508kali2 sshd[8419]: error: Protocol major versions differ: 2 vs. 1",
+        "recommendation": "No action needed on the server itself since it correctly rejected SSHv1 and the ssh-dss/weak key types - this confirms the server configuration is hardened. Document this as a positive control validation, and keep monitoring for any future client that manages to negotiate a legacy algorithm successfully."
+      },
+      {
+        "title": "Repeated identical scan burst (two waves ~2 minutes apart)",
+        "severity": "low",
+        "mitre": "T1595 - Active Scanning",
+        "evidence": "2026-10-23T10:41:43+0000 co1508kali2 sshd[9764]: error: kex_exchange_identification: Connection closed by remote host",
+        "recommendation": "The repetition suggests an automated scanning tool or script re-run rather than manual probing. Flag 192.168.92.129 for continued monitoring in case it returns with an actual authentication attempt (username/password) following this recon phase."
+      }
+    ],
+    "iocs": [
+      "192.168.92.129",
+      "co1508kali2 (target host)"
+    ],
+    "next_steps": [
+      "Check firewall/IDS/NetFlow logs for 192.168.92.129 to see if it touched other services (HTTP, RDP, etc.) around the same time window (10:38-10:42 UTC on 2026-10-23).",
+      "If other log sources exist outside this workspace (web server, additional auth logs, EDR), pull them and re-run the timeline tool filtered on 192.168.92.129 to check for follow-on exploitation after the recon.",
+      "Add 192.168.92.129 to a watchlist; if it reappears with actual authentication attempts (Accepted/Failed password entries), escalate to a brute-force investigation (T1110).",
+      "Confirm sshd configuration explicitly disables SSHv1 and weak host-key types (ssh-dss) via sshd_config - the logs show it is currently rejecting them correctly, so capture this as a baseline/config attestation.",
+      "No credentials were compromised and no further action is required on the host itself at this time beyond monitoring; this is a low-urgency recon event unless paired with later authentication evidence."
+    ]
+  },
+  "timeline": [
+    {
+      "type": "tool",
+      "step": 1,
+      "tool": "list_sources",
+      "input": {},
+      "command": "list_sources(logs/lab131)",
+      "returncode": 0,
+      "timed_out": false,
+      "started_at": "2026-10-23T09:33:03+00:00",
+      "finished_at": "2026-10-23T09:33:03+00:00",
+      "parsed": null,
+      "stdout": "ssh.log\t3536 bytes\t28 lines",
+      "stdout_truncated": false,
+      "stderr": "",
+      "stderr_truncated": false
+    },
+    {
+      "type": "tool",
+      "step": 2,
+      "tool": "auth_summary",
+      "input": {
+        "source": "ssh.log"
+      },
+      "command": "auth_summary(ssh.log)",
+      "returncode": 0,
+      "timed_out": false,
+      "started_at": "2026-10-23T09:33:04+00:00",
+      "finished_at": "2026-10-23T09:33:04+00:00",
+      "parsed": null,
+      "stdout": "Total failed logins: 0",
+      "stdout_truncated": false,
+      "stderr": "",
+      "stderr_truncated": false
+    },
+    {
+      "type": "tool",
+      "step": 3,
+      "tool": "read_lines",
+      "input": {
+        "source": "ssh.log",
+        "start": 1,
+        "count": 28
+      },
+      "command": "read_lines(ssh.log, start=1, count=28)",
+      "returncode": 0,
+      "timed_out": false,
+      "started_at": "2026-10-23T09:33:06+00:00",
+      "finished_at": "2026-10-23T09:33:06+00:00",
+      "parsed": null,
+      "stdout": "1: 2026-10-23T10:38:38+0000 co1508kali2 systemd[1]: Starting ssh.service - OpenBSD Secure Shell server...\n2: 2026-10-23T10:38:38+0000 co1508kali2 sshd[986]: Server listening on 0.0.0.0 port 22.\n3: 2026-10-23T10:38:38+0000 co1508kali2 sshd[986]: Server listening on :: port 22.\n4: 2026-10-23T10:38:38+0000 co1508kali2 systemd[1]: Started ssh.service - OpenBSD Secure Shell server.\n5: 2026-10-23T10:39:48+0000 co1508kali2 sshd[8418]: error: kex_exchange_identification: Connection closed by remote host\n6: 2026-10-23T10:39:48+0000 co1508kali2 sshd[8418]: Connection closed by 192.168.92.129 port 58852\n7: 2026-10-23T10:39:48+0000 co1508kali2 sshd[8419]: error: Protocol major versions differ: 2 vs. 1\n8: 2026-10-23T10:39:48+0000 co1508kali2 sshd[8419]: banner exchange: Connection from 192.168.92.129 port 58854: could not read protocol version\n9: 2026-10-23T10:39:48+0000 co1508kali2 sshd[8420]: error: Protocol major versions differ: 2 vs. 1\n10: 2026-10-23T10:39:48+0000 co1508kali2 sshd[8420]: banner exchange: Connection from 192.168.92.129 port 58858: could not read protocol version\n11: 2026-10-23T10:39:48+0000 co1508kali2 sshd[8421]: Unable to negotiate with 192.168.92.129 port 58868: no matching host key type found. Their offer: ssh-dss [preauth]\n12: 2026-10-23T10:39:48+0000 co1508kali2 sshd[8423]: Unable to negotiate with 192.168.92.129 port 58874: no matching host key type found. Their offer: ssh-rsa [preauth]\n13: 2026-10-23T10:39:49+0000 co1508kali2 sshd[8425]: Connection closed by 192.168.92.129 port 58888 [preauth]\n14: 2026-10-23T10:39:49+0000 co1508kali2 sshd[8435]: Unable to negotiate with 192.168.92.129 port 58896: no matching host key type found. Their offer: ecdsa-sha2-nistp384 [preauth]\n15: 2026-10-23T10:39:49+0000 co1508kali2 sshd[8437]: Unable to negotiate with 192.168.92.129 port 58906: no matching host key type found. Their offer: ecdsa-sha2-nistp521 [preauth]\n16: 2026-10-23T10:39:50+0000 co1508kali2 sshd[8439]: Connection closed by 192.168.92.129 port 58922 [preauth]\n17: 2026-10-23T10:41:43+0000 co1508kali2 sshd[9764]: error: kex_exchange_identification: Connection closed by remote host\n18: 2026-10-23T10:41:43+0000 co1508kali2 sshd[9764]: Connection closed by 192.168.92.129 port 38096\n19: 2026-10-23T10:41:43+0000 co1508kali2 sshd[9766]: error: Protocol major versions differ: 2 vs. 1\n20: 2026-10-23T10:41:43+0000 co1508kali2 sshd[9766]: banner exchange: Connection from 192.168.92.129 port 38110: could not read protocol version\n21: 2026-10-23T10:41:43+0000 co1508kali2 sshd[9765]: error: Protocol major versions differ: 2 vs. 1\n22: 2026-10-23T10:41:43+0000 co1508kali2 sshd[9765]: banner exchange: Connection from 192.168.92.129 port 38100: could not read protocol version\n23: 2026-10-23T10:41:44+0000 co1508kali2 sshd[9775]: Unable to negotiate with 192.168.92.129 port 38116: no matching host key type found. Their offer: ssh-dss [preauth]\n24: 2026-10-23T10:41:44+0000 co1508kali2 sshd[9777]: Unable to negotiate with 192.168.92.129 port 38130: no matching host key type found. Their offer: ssh-rsa [preauth]\n25: 2026-10-23T10:41:44+0000 co1508kali2 sshd[9779]: Connection closed by 192.168.92.129 port 38136 [preauth]\n26: 2026-10-23T10:41:45+0000 co1508kali2 sshd[9781]: Unable to negotiate with 192.168.92.129 port 38138: no matching host key type found. Their offer: ecdsa-sha2-nistp384 [preauth]\n27: 2026-10-23T10:41:45+0000 co1508kali2 sshd[9791]: Unable to negotiate with 192.168.92.129 port 38152: no matching host key type found. Their offer: ecdsa-sha2-nistp521 [preauth]\n28: 2026-10-23T10:41:45+0000 co1508kali2 sshd[9793]: Connection closed by 192.168.92.129 port 38158 [preauth]",
+      "stdout_truncated": false,
+      "stderr": "",
+      "stderr_truncated": false
+    },
+    {
+      "type": "tool",
+      "step": 4,
+      "tool": "search",
+      "input": {
+        "source": "ssh.log",
+        "pattern": "Accepted|Failed|Invalid user|sudo|useradd"
+      },
+      "command": "search(ssh.log, pattern='Accepted|Failed|Invalid user|sudo|useradd')",
+      "returncode": 0,
+      "timed_out": false,
+      "started_at": "2026-10-23T09:33:13+00:00",
+      "finished_at": "2026-10-23T09:33:13+00:00",
+      "parsed": null,
+      "stdout": "(no matches)",
+      "stdout_truncated": false,
+      "stderr": "",
+      "stderr_truncated": false
+    },
+    {
+      "type": "tool",
+      "step": 5,
+      "tool": "timeline",
+      "input": {
+        "contains": "192.168.92.129"
+      },
+      "command": "timeline(contains='192.168.92.129')",
+      "returncode": 0,
+      "timed_out": false,
+      "started_at": "2026-10-23T09:33:22+00:00",
+      "finished_at": "2026-10-23T09:33:22+00:00",
+      "parsed": {
+        "matched": 18,
+        "shown": 18,
+        "clock": "times without an offset are assumed to share the offset the other logs state, UTC+0",
+        "sources": {
+          "ssh.log": {
+            "timed": 28,
+            "untimed": 0,
+            "truncated": false
+          }
+        },
+        "events": [
+          {
+            "time": "2026-10-23T10:39:48Z",
+            "source": "ssh.log",
+            "line": 6
+          },
+          {
+            "time": "2026-10-23T10:39:48Z",
+            "source": "ssh.log",
+            "line": 8
+          },
+          {
+            "time": "2026-10-23T10:39:48Z",
+            "source": "ssh.log",
+            "line": 10
+          },
+          {
+            "time": "2026-10-23T10:39:48Z",
+            "source": "ssh.log",
+            "line": 11
+          },
+          {
+            "time": "2026-10-23T10:39:48Z",
+            "source": "ssh.log",
+            "line": 12
+          },
+          {
+            "time": "2026-10-23T10:39:49Z",
+            "source": "ssh.log",
+            "line": 13
+          },
+          {
+            "time": "2026-10-23T10:39:49Z",
+            "source": "ssh.log",
+            "line": 14
+          },
+          {
+            "time": "2026-10-23T10:39:49Z",
+            "source": "ssh.log",
+            "line": 15
+          },
+          {
+            "time": "2026-10-23T10:39:50Z",
+            "source": "ssh.log",
+            "line": 16
+          },
+          {
+            "time": "2026-10-23T10:41:43Z",
+            "source": "ssh.log",
+            "line": 18
+          },
+          {
+            "time": "2026-10-23T10:41:43Z",
+            "source": "ssh.log",
+            "line": 20
+          },
+          {
+            "time": "2026-10-23T10:41:43Z",
+            "source": "ssh.log",
+            "line": 22
+          },
+          {
+            "time": "2026-10-23T10:41:44Z",
+            "source": "ssh.log",
+            "line": 23
+          },
+          {
+            "time": "2026-10-23T10:41:44Z",
+            "source": "ssh.log",
+            "line": 24
+          },
+          {
+            "time": "2026-10-23T10:41:44Z",
+            "source": "ssh.log",
+            "line": 25
+          },
+          {
+            "time": "2026-10-23T10:41:45Z",
+            "source": "ssh.log",
+            "line": 26
+          },
+          {
+            "time": "2026-10-23T10:41:45Z",
+            "source": "ssh.log",
+            "line": 27
+          },
+          {
+            "time": "2026-10-23T10:41:45Z",
+            "source": "ssh.log",
+            "line": 28
+          }
+        ]
+      },
+      "stdout": "Timeline: 1 source(s), 28 timed lines; 18 match '192.168.92.129', 18 shown.\nClock: times without an offset are assumed to share the offset the other logs state, UTC+0.\n  ssh.log: 28 timed\n\n2026-10-23T10:39:48Z  ssh.log:6  2026-10-23T10:39:48+0000 co1508kali2 sshd[8418]: Connection closed by 192.168.92.129 port 58852\n2026-10-23T10:39:48Z  ssh.log:8  2026-10-23T10:39:48+0000 co1508kali2 sshd[8419]: banner exchange: Connection from 192.168.92.129 port 58854: could not read protocol version\n2026-10-23T10:39:48Z  ssh.log:10  2026-10-23T10:39:48+0000 co1508kali2 sshd[8420]: banner exchange: Connection from 192.168.92.129 port 58858: could not read protocol version\n2026-10-23T10:39:48Z  ssh.log:11  2026-10-23T10:39:48+0000 co1508kali2 sshd[8421]: Unable to negotiate with 192.168.92.129 port 58868: no matching host key type found. Their offer: ssh-dss [preauth]\n2026-10-23T10:39:48Z  ssh.log:12  2026-10-23T10:39:48+0000 co1508kali2 sshd[8423]: Unable to negotiate with 192.168.92.129 port 58874: no matching host key type found. Their offer: ssh-rsa [preauth]\n2026-10-23T10:39:49Z  ssh.log:13  2026-10-23T10:39:49+0000 co1508kali2 sshd[8425]: Connection closed by 192.168.92.129 port 58888 [preauth]\n2026-10-23T10:39:49Z  ssh.log:14  2026-10-23T10:39:49+0000 co1508kali2 sshd[8435]: Unable to negotiate with 192.168.92.129 port 58896: no matching host key type found. Their offer: ecdsa-sha2-nistp384 [preauth]\n2026-10-23T10:39:49Z  ssh.log:15  2026-10-23T10:39:49+0000 co1508kali2 sshd[8437]: Unable to negotiate with 192.168.92.129 port 58906: no matching host key type found. Their offer: ecdsa-sha2-nistp521 [preauth]\n2026-10-23T10:39:50Z  ssh.log:16  2026-10-23T10:39:50+0000 co1508kali2 sshd[8439]: Connection closed by 192.168.92.129 port 58922 [preauth]\n2026-10-23T10:41:43Z  ssh.log:18  2026-10-23T10:41:43+0000 co1508kali2 sshd[9764]: Connection closed by 192.168.92.129 port 38096\n2026-10-23T10:41:43Z  ssh.log:20  2026-10-23T10:41:43+0000 co1508kali2 sshd[9766]: banner exchange: Connection from 192.168.92.129 port 38110: could not read protocol version\n2026-10-23T10:41:43Z  ssh.log:22  2026-10-23T10:41:43+0000 co1508kali2 sshd[9765]: banner exchange: Connection from 192.168.92.129 port 38100: could not read protocol version\n2026-10-23T10:41:44Z  ssh.log:23  2026-10-23T10:41:44+0000 co1508kali2 sshd[9775]: Unable to negotiate with 192.168.92.129 port 38116: no matching host key type found. Their offer: ssh-dss [preauth]\n2026-10-23T10:41:44Z  ssh.log:24  2026-10-23T10:41:44+0000 co1508kali2 sshd[9777]: Unable to negotiate with 192.168.92.129 port 38130: no matching host key type found. Their offer: ssh-rsa [preauth]\n2026-10-23T10:41:44Z  ssh.log:25  2026-10-23T10:41:44+0000 co1508kali2 sshd[9779]: Connection closed by 192.168.92.129 port 38136 [preauth]\n2026-10-23T10:41:45Z  ssh.log:26  2026-10-23T10:41:45+0000 co1508kali2 sshd[9781]: Unable to negotiate with 192.168.92.129 port 38138: no matching host key type found. Their offer: ecdsa-sha2-nistp384 [preauth]\n2026-10-23T10:41:45Z  ssh.log:27  2026-10-23T10:41:45+0000 co1508kali2 sshd[9791]: Unable to negotiate with 192.168.92.129 port 38152: no matching host key type found. Their offer: ecdsa-sha2-nistp521 [preauth]\n2026-10-23T10:41:45Z  ssh.log:28  2026-10-23T10:41:45+0000 co1508kali2 sshd[9793]: Connection closed by 192.168.92.129 port 38158 [preauth]",
+      "stdout_truncated": false,
+      "stderr": "",
+      "stderr_truncated": false
+    }
+  ],
+  "envelope_excluded": []
+}
