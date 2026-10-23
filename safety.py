@@ -35,6 +35,7 @@ a subprocess needs its own constraint, so this module also owns:
 
 import ipaddress
 import re
+import socket
 import sys
 from pathlib import Path
 
@@ -379,3 +380,29 @@ if __name__ == "__main__":
     except NotAuthorizedError as e:
         print(f"[safety] BLOCKED: {e}")
         sys.exit(1)
+
+
+def is_this_machine(host: str) -> bool:
+    """
+    True when `host` is an address of the machine running the agent.
+
+    Checked by binding a UDP socket to it, which succeeds only for a local
+    address and sends nothing. Scanning yourself is not unauthorized, so this
+    never blocks; it exists because the first homelab run allowlisted and
+    scanned the Kali box's own IP instead of the target VM's, and spent ten
+    minutes concluding a working network was broken.
+    """
+    try:
+        ip = ipaddress.ip_address(host.strip())
+    except ValueError:
+        return False
+    if ip.is_loopback:
+        return True
+    family = socket.AF_INET6 if ip.version == 6 else socket.AF_INET
+    try:
+        with socket.socket(family, socket.SOCK_DGRAM) as s:
+            s.bind((str(ip), 0))
+        return True
+    except OSError:
+        return False
+

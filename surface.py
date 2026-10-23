@@ -558,6 +558,16 @@ class Check:
     # produce the evidence it was supposed to.
     state: str = "pass"
 
+    def __post_init__(self):
+        # A check built as unsatisfied without a state used to keep the
+        # default "pass": the console printed a PASS badge on a failed check,
+        # and the early-finish return (which looks for "miss") never saw it.
+        # Found on the first homelab run in v0.10.2, where "Open ports found"
+        # read PASS beside "1/2 checks satisfied". Unsatisfied with no stated
+        # outcome means never attempted.
+        if not self.satisfied and self.state in ("pass", "prior"):
+            self.state = "miss"
+
 
 def _evidence_check(name: str, now_outcome: str | None, prior_outcome: str | None,
                     when: str, responded: int | None = None) -> Check:
@@ -649,8 +659,10 @@ def coverage(surface: AttackSurface) -> list:
             Check(
                 "Open ports found",
                 False,
-                "the scan found no open ports - if the box should be up, check "
-                "the VPN connection before concluding anything",
+                "the scan ran and found no open ports - before concluding anything, "
+                "confirm the target is up and is the machine you meant (for HTB or "
+                "THM, that the VPN is connected)",
+                state="empty",
             )
         )
         return checks

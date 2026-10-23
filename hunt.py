@@ -514,6 +514,9 @@ def main():
     print("\n" + console.agent("hunt", "Done. Reports:"))
     print(console.note(str(report.path)))
     print(console.note(str(report.html_path)))
+    for extra in (getattr(report, "json_path", None), getattr(report, "findings_path", None)):
+        if extra is not None and extra.exists():
+            print(console.note(str(extra)))
 
     if not completed:
         print(

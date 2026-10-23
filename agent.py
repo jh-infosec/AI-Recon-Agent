@@ -51,7 +51,7 @@ import wordgen
 from apiclient import call_with_retry, explain
 from knowledge import format_for_prompt
 from report import SessionReport
-from safety import NotAuthorizedError, assert_authorized
+from safety import NotAuthorizedError, assert_authorized, is_this_machine
 from surface import AttackSurface, coverage, coverage_summary, gate_message, unattempted
 from telemetry import Telemetry
 from tools import recon
@@ -451,6 +451,12 @@ def main():
         print(f"[blocked] {e}")
         sys.exit(1)
 
+    if is_this_machine(args.target):
+        print(console.warn(
+            f"{args.target} is an address of THIS machine, not a remote target. If you "
+            f"meant to scan a lab VM, check its IP (on the VM: ip -4 addr) and the "
+            f"allowlist. Continuing, since scanning yourself is allowed."))
+
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         print("[error] Set ANTHROPIC_API_KEY in your environment first.")
@@ -807,7 +813,7 @@ def main():
     advice = [
         (summary.get("blocked", []), "produced no readable result (blocked, timed out or errored)"),
         (summary.get("partial", []), "was cut short, so missing does not mean absent"),
-        (summary.get("empty", []), "came back empty with nothing confirming the service serves content"),
+        (summary.get("empty", []), "ran and came back empty, with nothing yet confirming that is the real answer"),
     ]
     for names, phrase in advice:
         if names:
@@ -833,6 +839,9 @@ def main():
     print("\n" + console.agent("agent", "Done. Reports:"))
     print(console.note(str(report.path)))
     print(console.note(str(report.html_path)))
+    for extra in (getattr(report, "json_path", None), getattr(report, "findings_path", None)):
+        if extra is not None and extra.exists():
+            print(console.note(str(extra)))
 
     if not completed:
         print(

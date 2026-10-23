@@ -22,9 +22,9 @@
 # =============================================================================
 
 authorized_targets: 
-   - host: 10.112.180.141
-     platform: THM
-     note: "Attacktive Directory - AD DC recon"
+   - host: 192.168.92.129
+     platform: homelab
+     note: "My own homelab VM - v1.0 live test"
 
 
 # Example (uncomment and edit for your own session):

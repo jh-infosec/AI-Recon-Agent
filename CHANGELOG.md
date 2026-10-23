@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.3] - 2026-10-23
+
+From the first homelab run. The allowlist held 192.168.92.129, which was the Kali machine's own address, so the agent scanned itself, found nothing listening, and spent ten minutes on a full-range scan before concluding the network was broken. The run did confirm one thing live: **prompt caching works** (4,703 input tokens read from the cache in a three-turn session). It also exposed three defects.
+
+Fixed: **a failed check printed a PASS badge.** "Open ports found" was built as unsatisfied with no state, so it kept the dataclass default, `pass`, and the console showed two PASS lines under "1/2 checks satisfied". The same default meant a session that never ran nmap at all would not have been sent back by v0.7.3's early-finish return, which looks for `miss`. A check that is unsatisfied with no stated outcome is now `miss`, and "Open ports found" says what actually happened: `empty`, the scan ran and found nothing. That is not sent back to be repeated, and its advice now says to confirm the target is up and is the machine you meant, not only to check a VPN that a homelab does not use. Present since v0.6.1.
+
+Fixed: **the list of report files left two out.** The console printed the Markdown and HTML paths and not the JSON report or the findings envelope, so nothing said they had been written. All four are listed now, by both agents.
+
+Added: **a warning when the target is this machine.** `safety.is_this_machine()` binds a UDP socket to the target address, which succeeds only for a local address and sends nothing. The agent warns and carries on, since scanning yourself is not unauthorized; it is just rarely what was meant.
+
+Tests: 17 new (877 total, 4 skipped without a Shadowfax checkout).
+
 ## [0.10.2] - 2026-10-23
 
 Updated: **Shadowfax's native detector categories.** Shadowfax v0.21 to v0.25 added five (`history_rewritten`, `console_recovery`, `admin_account_created`, `admin_role_granted`, `mfa_removed`). None collides with a key this emitter uses, so no envelope changes, but the copy in `envelope.py` was out of date and the guard test in `test_v0101.py` said so the first time it ran against Shadowfax v0.26.0. That is the test working as intended.
