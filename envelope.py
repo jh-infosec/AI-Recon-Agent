@@ -57,6 +57,9 @@ SHADOWFAX_NATIVE = frozenset({
     "out_of_scope_action", "permission_violation", "privilege_escalation",
     "rate_anomaly", "token_spend_anomaly", "undeclared_agent",
     "capability_drift", "excess_capability", "unlisted_tool_call", "ingest_flood",
+    # Shadowfax v0.21 to v0.25.
+    "history_rewritten", "console_recovery", "admin_account_created",
+    "admin_role_granted", "mfa_removed",
 })
 
 MAX_FINDINGS = 500

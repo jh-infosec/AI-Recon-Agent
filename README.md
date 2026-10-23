@@ -1,6 +1,6 @@
 # ai-recon-agent
 
-**v0.10.1**
+**v0.10.2**
 
 ai-recon-agent is a small security study kit with two halves: a **red-team
 recon agent** for practicing enumeration on machines you're authorized to
@@ -312,16 +312,15 @@ has nothing more to find is finished work, not an open gap. It stays a gap
 when nothing fetched a page. The bar is whether the site was seen: a 404
 proves the server was there to say no, so a session that only ever got a 404
 has not established that the blank is real.
-itself finished before it was.
 
 ## Roadmap
 
 `ROADMAP.md` is the source of truth for what ships when, and
 `architecture.md` carries the design reasoning, the known constraints and a
-record of every defect cleared so far. In short: v0.6.0 added state across
-runs, so a second session against a box builds on the first instead of
-starting cold, and v0.8.0 is the purple-team feature that narrates a recon
-report and a hunt report of the same box from both sides.
+record of every defect cleared so far. What remains for v1.0.0 is proof
+rather than features: one live run of everything since v0.7.3 against a
+homelab VM, with its reports kept as test fixtures and its findings ingested
+into a running Shadowfax.
 
 Exploitation, payload generation and anything that writes to a target are
 explicitly not planned, at any version.

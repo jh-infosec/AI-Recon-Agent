@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.2] - 2026-10-23
+
+Updated: **Shadowfax's native detector categories.** Shadowfax v0.21 to v0.25 added five (`history_rewritten`, `console_recovery`, `admin_account_created`, `admin_role_granted`, `mfa_removed`). None collides with a key this emitter uses, so no envelope changes, but the copy in `envelope.py` was out of date and the guard test in `test_v0101.py` said so the first time it ran against Shadowfax v0.26.0. That is the test working as intended.
+
+Checked against Shadowfax v0.26.0: its validator accepts both envelopes, and its full suite (761 checks) passes with this emitter's fixtures ingested.
+
+Fixed: two README leftovers. A stray fragment ("itself finished before it was.") at the end of the empty-scan paragraph, and a roadmap summary still describing v0.8.0 as future work.
+
 ## [0.10.1] - 2026-10-19
 
 Fixed: **v0.10.0's findings envelope was the wrong format.** The roadmap pointed at a `findings-envelope.md`, the file was not in this repository, and v0.10.0 wrote one. The real one already existed in the Shadowfax repository, version 1.0, with Shadowfax's `POST /findings` and validator built against it since Shadowfax v0.11. The two shapes shared almost nothing: v0.10.0 had a sixth severity (`unrated`) where the specification forbids a sixth, different field names, no deterministic ids and no `validated` flag. Shadowfax would have refused every envelope at its first field. The tests passed because they checked the code against the document written beside it.
