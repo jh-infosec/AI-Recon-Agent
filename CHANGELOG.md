@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.5] - 2026-10-23
+
+From the second live purple run. v0.10.4 guessed the first failure's cause (a list sent as JSON text) and guessed wrong, but it also recorded what the model sent, and that record settled it without another paid run: all three answers were `{narrative, detection_ideas}` with **no `steps` field at all**. The narrative held the whole step-by-step analysis.
+
+Fixed: **the model wrote the steps into the narrative and never sent `steps`.** A model fills a tool's fields in the order the schema lists them, and `narrative` came first, so it told the whole story there and stopped. Asking again produced the same narrative again. `steps` now comes first and `narrative` last, described as a short summary (under 300 words) that does not repeat the step detail. And an answer with a good narrative and no usable steps no longer starts over: the narrative is kept, and the next call is forced through `finish_purple_steps`, a tool that can carry only `steps` and `detection_ideas`. Both tools are offered on every call so the cached prefix does not change.
+
+Fixed: **the attacker's IP was never stated.** `--attacker-ip` only filtered the log lines, so the narrative said the attacking machine's address "isn't given" and was "assumed from the ssh.log activity". The prompt now says it outright.
+
+The record also shows the analysis was right before it was rejected: it matched both nmap scans to the two log bursts and worked out the target's two-hour clock offset on its own.
+
+Tests: 8 new, replaying the live failure (900 total, 4 skipped without a Shadowfax checkout).
+
 ## [0.10.4] - 2026-10-23
 
 From the first live end-to-end run: recon against a homelab VM (192.168.92.131, SSH only), a hunt over that VM's SSH log, then purple over the two reports. Recon and hunt worked. The hunt found both nmap scans as two identical bursts of SSH negotiation failures two minutes apart, named them fingerprinting rather than brute force, and all three of its findings passed the envelope's verbatim-evidence filter (`envelope_excluded: []`). It also caught something in the lab itself: the VM's clock writes local time labelled as UTC, two hours off.
