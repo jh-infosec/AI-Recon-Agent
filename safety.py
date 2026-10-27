@@ -58,7 +58,10 @@ ALLOWED_WORDLIST_ROOTS = (
     paths.WORDLISTS_DIR,
 )
 
-_EXTENSIONS_RE = re.compile(r"^\.?[A-Za-z0-9]{1,10}(,\s*\.?[A-Za-z0-9]{1,10})*$")
+# One extension may have two parts (.tar.gz): v1.0.1 refused the whole list
+# over that one entry on a live run, and the model had to drop it and retry.
+_EXT = r"\.?[A-Za-z0-9]{1,10}(?:\.[A-Za-z0-9]{1,10})?"
+_EXTENSIONS_RE = re.compile(rf"^{_EXT}(,\s*{_EXT})*$")
 _PORTS_RE = re.compile(r"^\d{1,5}(-\d{1,5})?(,\d{1,5}(-\d{1,5})?)*$")
 
 # Loose hostname pattern (RFC 1123-ish) - used only for lab hostnames like

@@ -224,7 +224,8 @@ def run_gobuster(
     cmd = [binary, "dir", "-u", url, "-w", str(wl), "-t", GOBUSTER_THREADS]
 
     result = _run(cmd, timeout=300)
-    result["parsed"] = parsers.parse_gobuster(result.get("stdout", ""))
+    result["parsed"] = parsers.rebase_fuzz_results(
+        parsers.parse_gobuster(result.get("stdout", "")), base)
     return result
 
 
@@ -341,7 +342,8 @@ def run_ffuf(
         # them with the temp directory, and on a live Mr Robot run that threw
         # away the entire content-enumeration step. A partial answer beats
         # none, as long as it says it is partial.
-        result["parsed"] = parsers.parse_ffuf_json(_read_json_file(outfile))
+        result["parsed"] = parsers.rebase_fuzz_results(
+            parsers.parse_ffuf_json(_read_json_file(outfile)), base)
         if result.get("timed_out") and result["parsed"].get("results"):
             result["parsed"]["partial"] = True
             # The parser attached its note before `partial` existed, so it

@@ -46,7 +46,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import paths
-from parsers import is_vhost_candidate
+from parsers import is_server_default, is_vhost_candidate
 from version import __version__
 
 STATE_DIR = paths.STATE_DIR
@@ -470,8 +470,16 @@ def diff(previous: dict | None, current_surface: dict) -> dict:
         if was and is_now and was != is_now:
             changed.append({"port": port, "was": was, "now": is_now})
 
-    prev_paths = {int(k): set(v) for k, v in (before.get("paths") or {}).items()}
-    now_paths = {int(k): set(v) for k, v in (current_surface.get("paths") or {}).items()}
+    # Server-default 403s are left out of the comparison: they appear on every
+    # Apache host, and on a live run about a hundred of them filled the "NEW
+    # paths" line and pushed /admin and /backup out of it.
+    def _real(found):
+        if isinstance(found, dict):
+            return {p for p, st in found.items() if not is_server_default(p, st)}
+        return set(found or [])
+
+    prev_paths = {int(k): _real(v) for k, v in (before.get("paths") or {}).items()}
+    now_paths = {int(k): _real(v) for k, v in (current_surface.get("paths") or {}).items()}
     new_paths = []
     for port in sorted(now_paths):
         fresh = sorted(now_paths[port] - prev_paths.get(port, set()))

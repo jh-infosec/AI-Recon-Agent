@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.2] - 2026-10-27
+
+From the second homelab run: the same VM with Apache added, a `robots.txt` naming `/backup/`, an empty `/admin/` listing, and firewall logging. The agent followed `robots.txt` to `/backup/`, found `/admin/` on its own, generated a target-aware wordlist for the first time on a live target, and concluded correctly that both directories held nothing real. Its output exposed three defects.
+
+Fixed: **subdirectory scans were recorded as site-root scans.** gobuster and ffuf report what they find relative to the URL they were given, so a scan of `/backup` reports `index.html`. Every consumer read that as `/index.html`: the attack surface, the change-since-last-session list, the findings envelope and the model. Shown `index.html` under a scan of `/backup`, the model asked for `/admin/index.html`, which does not exist. A dirb blank entry under a subdirectory also counted as a hit on the site root. `parsers.rebase_fuzz_results()` now rewrites a subdirectory scan's results to full paths at the source, so every consumer sees `/backup/index.html`. Present since v0.5.0 added the `path` argument.
+
+Fixed: **Apache's own `.ht*` 403s became findings.** The console has hidden them since v0.5.x, but only the console: about a hundred went into the session's "NEW paths" line, pushing `/admin` and `/backup` out of it, and into the findings envelope as validated `web_path_found` findings that Shadowfax would have ingested. The rule moved from `console.py` to `parsers.is_server_default()`, and the envelope and the session diff now apply it too. It reads the last path segment, so `/admin/.htaccess` is caught as well as `/.htaccess`, and it accepts a saved snapshot's text status (`"403"`). They stay in the full report.
+
+Fixed: **a two-part extension refused the whole list.** `.tar.gz` made `.php,.txt,.zip,.tar,.tar.gz,.sql,.bak` invalid, and the model dropped it and retried. One extension may now have two parts; anything else malformed is still refused.
+
+Tests: 23 new (932 passed, 6 skipped without a Shadowfax checkout).
+
 ## [1.0.1] - 2026-10-23
 
 Fixed: **CI was red from v0.10.4 to v1.0.0.** The tests passed, but the lint step failed before they ran. `test_v0104.py` and `test_v0105.py` imported the purple fixtures from `test_v080.py` by name and then took them as arguments, which pytest accepts and ruff reports as a redefinition (F811), twelve times. The shared fixtures are now registered once in `tests/conftest.py`, and the test files import nothing they do not call. The suite was run locally before each of those releases; `ruff check` was not, and now is.

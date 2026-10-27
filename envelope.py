@@ -39,6 +39,7 @@ import hashlib
 import re
 from datetime import datetime, timezone
 
+from parsers import is_server_default
 from version import __version__
 
 ENVELOPE_VERSION = "1.0"
@@ -166,6 +167,10 @@ def from_recon(report: dict) -> dict:
 
     for port, found in sorted((surface.get("paths") or {}).items(), key=lambda kv: str(kv[0])):
         for path, status in sorted((found or {}).items()):
+            # Apache's own .ht* deny answers every scan on every host; it is
+            # the server's configuration, not something this target exposes.
+            if is_server_default(path, status):
+                continue
             out.append(_finding(
                 target, "web_path_found", f"{port}{path}",
                 severity=RECON_SEVERITY["web_path_found"],

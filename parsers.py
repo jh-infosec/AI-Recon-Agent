@@ -766,6 +766,59 @@ _DNS_NAME = re.compile(r"^[A-Za-z0-9_](?:[A-Za-z0-9_\-]*[A-Za-z0-9])?(?:\.[A-Za-
 _HOSTNAME_IN_DATA = {"NS": 0, "CNAME": 0, "PTR": 0, "DNAME": 0, "SOA": 0, "MX": -1, "SRV": -1}
 
 
+# Paths whose 403 is the web server's own default deny rule rather than
+# anything about this target. Apache ships `<Files ".ht*">` deny-all, so every
+# wordlist entry beginning .ht produces a 403 on every Apache host in the
+# world. Moved here from console.py in v1.0.2: the console hid them, but the
+# surface, the change-since-last-session list and the findings envelope did
+# not, and a live run put about a hundred of them into the envelope as
+# validated `web_path_found` findings.
+SERVER_DEFAULT_DENY = (".ht",)
+LOW_INTEREST_PATHS = ("server-status", "server-info")
+
+
+def is_server_default(name, status) -> bool:
+    """True for a 403 that every server of this type returns regardless of target."""
+    # Saved snapshots keep the status as text ("403"), live results as an int.
+    if str(status).strip() != "403":
+        return False
+    # The last segment decides: /admin/.htaccess is as much the server's own
+    # rule as /.htaccess, now that subdirectory results carry their directory.
+    leaf = str(name or "").strip().strip("/").rsplit("/", 1)[-1].lower()
+    if leaf.startswith(SERVER_DEFAULT_DENY):
+        return True
+    return any(leaf.startswith(p) for p in LOW_INTEREST_PATHS)
+
+
+def rebase_fuzz_results(parsed: dict, base: str) -> dict:
+    """
+    Put a subdirectory scan's results under the directory it scanned.
+
+    gobuster and ffuf report what they found relative to the URL they were
+    given, so a scan of /backup reports `index.html`, not `/backup/index.html`.
+    Since v0.5.0 added the `path` argument, every consumer read those as
+    site-root paths: the attack surface, the change-since-last-session list
+    and the findings envelope all recorded `/index.html`, and on a live run
+    the model, shown `index.html` under a scan of /backup, went looking for
+    `/admin/index.html` instead. Rewritten once here, at the source, so every
+    consumer sees the full path. A root scan (empty base) is left alone.
+    """
+    base = (base or "").rstrip("/")
+    if not base or not isinstance(parsed, dict):
+        return parsed
+    parsed["base"] = base
+    for r in parsed.get("results") or []:
+        if not isinstance(r, dict):
+            continue
+        key = "input" if "input" in r else "path"
+        name = r.get(key)
+        if not isinstance(name, str):
+            continue
+        tail = name.strip().lstrip("/")
+        r[key] = f"{base}/{tail}"
+    return parsed
+
+
 def is_vhost_candidate(name: str) -> bool:
     """
     True if `name` could be a virtual host: a DNS name that is not an IP

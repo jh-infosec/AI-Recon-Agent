@@ -35,6 +35,11 @@ run correlate.
 | `anonymous_smb_enumeration` | medium | true | SMB returned shares, users or groups without credentials |
 | `anonymous_ldap_search` | medium | true | LDAP returned directory entries to an anonymous search |
 
+`web_path_found` leaves out the web server's own default denials (a 403 on
+`.ht*`, `server-status` or `server-info`), which every Apache host returns
+whatever is on it. A path found by a scan of a subdirectory is reported with
+that directory (`/backup/index.html`).
+
 The service name on an open port is what the service said about itself, so it
 goes in `data.service_claimed`, not in the validated claim. A target that
 refused anonymous enumeration produces no finding: that is correct

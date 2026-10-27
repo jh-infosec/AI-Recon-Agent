@@ -26,6 +26,10 @@ where this output ends up.
 import os
 import sys
 
+# The server-default 403 rule lives in parsers.py since v1.0.2, so the
+# surface, the session diff and the envelope apply the same one.
+from parsers import is_server_default as _is_server_default
+
 RESET = "\033[0m"
 BOLD = "\033[1m"
 DIM = "\033[2m"
@@ -172,26 +176,6 @@ def heading(text: str) -> str:
 # highlight extraction
 # --------------------------------------------------------------------------- #
 MAX_HIGHLIGHTS = 12
-
-# Paths whose 403 is the web server's own default deny rule rather than
-# anything about this target. Apache ships `<Files ".ht*">` deny-all, so every
-# wordlist entry beginning .ht produces a 403 on every Apache host in the
-# world. On a real Kenobi run these filled eleven of twelve highlight slots
-# and pushed index.html and admin.html - the actual content - into the
-# "...and N more" line. Noise that evicts signal is worse than no highlights.
-_SERVER_DEFAULT_DENY = (".ht",)
-_LOW_INTEREST_PATHS = ("server-status", "server-info")
-
-
-def _is_server_default(name: str, status) -> bool:
-    """True for a 403 that every server of this type returns regardless of target."""
-    if status != 403:
-        return False
-    base = (name or "").lstrip("/").lower()
-    if base.startswith(_SERVER_DEFAULT_DENY):
-        return True
-    return any(base.startswith(p) for p in _LOW_INTEREST_PATHS)
-
 
 def _path_rank(status) -> int:
     """
