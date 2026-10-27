@@ -452,11 +452,37 @@ _SUSPICIOUS_PATH = re.compile(
 )
 _SCANNER_UA = re.compile(r"(sqlmap|nikto|nmap|gobuster|dirbuster|masscan|hydra|fuzz)", re.IGNORECASE)
 
+# Known tools by the user agent they send, for the sweep in web_log_summary.
+# Each is reported with a count, its first and last time, and one log line
+# verbatim. v1.2.0: on the 2026-10-27 run WhatWeb's four requests were in the
+# access log, but its user agent matched nothing here and the hunt never
+# searched for it, so purple, which works only from the hunt record, could
+# not see that recon step at all.
+KNOWN_TOOL_UAS = (
+    ("nmap", re.compile(r"Nmap Scripting Engine", re.I)),
+    ("whatweb", re.compile(r"WhatWeb", re.I)),
+    ("gobuster", re.compile(r"gobuster", re.I)),
+    ("ffuf", re.compile(r"Fuzz Faster U Fool|\bffuf\b", re.I)),
+    ("feroxbuster", re.compile(r"feroxbuster", re.I)),
+    ("dirb/dirbuster", re.compile(r"\bdirb|DirBuster", re.I)),
+    ("wfuzz", re.compile(r"wfuzz", re.I)),
+    ("nikto", re.compile(r"nikto", re.I)),
+    ("sqlmap", re.compile(r"sqlmap", re.I)),
+    ("wpscan", re.compile(r"WPScan", re.I)),
+    ("hydra", re.compile(r"hydra", re.I)),
+    ("nuclei", re.compile(r"nuclei", re.I)),
+    ("curl", re.compile(r"^curl/", re.I)),
+    ("wget", re.compile(r"^Wget/", re.I)),
+    ("python", re.compile(r"python-requests|python-urllib|aiohttp", re.I)),
+)
+_SAMPLE_CHARS = 300
+
 
 def web_log_summary(workspace: str, source: str = "") -> dict:
     """
     Parse an Apache/nginx combined-format access log: top talkers, status-code
-    spread, scanner user-agents, and suspicious requests (path traversal,
+    spread, known tools by user agent (KNOWN_TOOL_UAS, v1.2.0), scanner
+    user-agents, and suspicious requests (path traversal,
     SQLi, known-CMS probing) - flagging any that returned HTTP 200, since a
     200 on a probe means it may actually have worked.
     """
@@ -467,6 +493,7 @@ def web_log_summary(workspace: str, source: str = "") -> dict:
     by_status: Counter = Counter()
     scanners: set[str] = set()
     suspicious: list[str] = []
+    tools_seen: dict = {}
     total = 0
 
     unparsed = 0
@@ -483,6 +510,15 @@ def web_log_summary(workspace: str, source: str = "") -> dict:
         by_status[m.group("status")] += 1
         ua = m.group("ua") or ""
         path_req = m.group("path")
+        for tool_name, pattern in KNOWN_TOOL_UAS:
+            if pattern.search(ua):
+                seen = tools_seen.setdefault(tool_name, {"n": 0, "first": None, "last": None,
+                                                         "sample": line.strip()[:_SAMPLE_CHARS]})
+                seen["n"] += 1
+                stamp = m.group("ts") if "ts" in m.groupdict() else None
+                seen["first"] = seen["first"] or stamp
+                seen["last"] = stamp or seen["last"]
+                break
         if _SCANNER_UA.search(ua):
             scanners.add(f"{ip} ({ua[:60]})")
         if _SUSPICIOUS_PATH.search(path_req):
@@ -514,6 +550,12 @@ def web_log_summary(workspace: str, source: str = "") -> dict:
         lines.append("Top source IPs:")
         for ip, n in by_ip.most_common(10):
             lines.append(f"  {ip}: {n}")
+    if tools_seen:
+        lines.append("Known tools by user agent (count, first to last, one line verbatim):")
+        for tool_name, seen in sorted(tools_seen.items(), key=lambda kv: -kv[1]["n"]):
+            span = f", {seen['first']} to {seen['last']}" if seen["first"] else ""
+            lines.append(f"  {tool_name}: {seen['n']} request(s){span}")
+            lines.append(f"    {seen['sample']}")
     if scanners:
         lines.append("Scanner user-agents seen:")
         for s in sorted(scanners):

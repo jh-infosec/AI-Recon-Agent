@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.2.0] - 2026-10-27
+
+Both fixes from the hunt half of the second live run, built and replayed against its real logs and hunt report (`tests/fixtures/live-20261027/`), offline.
+
+Fixed: **hunt findings without a real log line.** Two of the five findings, the two rated high (the directory brute force, and the 200s on `/admin/` and `/backup/`), gave a summary as evidence: lines elided with `...`, or two lines joined with ` ; ` on one line. The envelope rightly left both out of Shadowfax, so the two most important findings never reached it. The `finish_hunt` schema has asked for verbatim lines since v0.10.1; asking was not enough. `unobserved_findings()` now checks each finding's evidence against the hunt's own tool output with the envelope's rule before the hunt ends, and sends the answer back once naming the findings at fault and asking for one log line per line. An answer still loose after that is kept, and its loose findings stay out of the envelope as before. `envelope.hunt_corpus` and `envelope.observed` are the shared names, so the two checks cannot drift apart.
+
+Added: **known tools by user agent in `web_log_summary`.** WhatWeb's four requests were in the access log, but its user agent matched nothing in the scanner pattern and the hunt never searched for it, so purple, which works only from the hunt record, could not see that recon step. `KNOWN_TOOL_UAS` names fifteen tools and clients (nmap's script engine, WhatWeb, gobuster, ffuf, feroxbuster, dirb, wfuzz, nikto, sqlmap, WPScan, hydra, nuclei, curl, wget, Python clients). Each one seen is reported with a count, its first and last time, and one log line verbatim, ready to quote. On the live log: gobuster 13,845 requests, ffuf 624, nmap 25, WhatWeb 4, curl 2 (the student's own tests). WhatWeb's line now gives purple a candidate for that step.
+
+Tests: 17 new (970 passed, 6 skipped without a Shadowfax checkout).
+
 ## [1.1.0] - 2026-10-27
 
 The second live run, kept as `tests/fixtures/live-20261027/`: recon (v1.0.1) against the homelab VM with Apache added, a hunt over its Apache log, firewall SYN log and sshd journal (v1.0.2), and purple over the two (v1.0.2). Recon and the hunt did well. The hunt rebuilt the whole chain from three logs: the port scan from firewall SYNs, nmap's web scripts by their user agent, 14,558 gobuster and ffuf requests, and sshd failing on every probe to port 22, tied to the scan by timing alone because those lines name no IP. (The sshd failures were the lab: installing Apache upgraded OpenSSL under an OpenSSH built against an older one.)

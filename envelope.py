@@ -255,3 +255,9 @@ def from_hunt(report: dict) -> tuple:
             recommendation=f.get("recommendation"), data=data or None))
     subject = {"kind": "log_workspace", "id": workspace, "label": workspace}
     return _envelope(report, subject, out), excluded
+
+
+# Public names for the two checks, used by hunt.py (v1.2.0) to hold a finding
+# to the same rule before the hunt ends that the envelope applies after it.
+hunt_corpus = _hunt_corpus
+observed = _observed

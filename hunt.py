@@ -39,6 +39,7 @@ import anthropic
 import caching
 import completeness
 import console
+import envelope
 import repeats
 import report as report_mod
 from apiclient import call_with_retry, explain
@@ -158,9 +159,10 @@ TOOLS = [
     {
         "name": "web_log_summary",
         "description": (
-            "Parse an Apache/nginx access log: top IPs, status spread, scanner "
-            "user-agents, and suspicious requests (traversal/SQLi/known paths), "
-            "flagging any that returned HTTP 200."
+            "Parse an Apache/nginx access log: top IPs, status spread, known "
+            "tools by user agent (each with a count, its time span and one log "
+            "line verbatim, ready to quote as evidence), and suspicious requests "
+            "(traversal/SQLi/known paths), flagging any that returned HTTP 200."
         ),
         "input_schema": {
             "type": "object",
@@ -277,6 +279,26 @@ def dispatch_tool(name: str, tool_input: dict, workspace: str) -> dict:
     raise ValueError(f"Unknown tool: {name}")
 
 
+def unobserved_findings(payload: dict, report_doc: dict) -> list:
+    """Titles of findings whose evidence is not verbatim tool output."""
+    corpus = envelope.hunt_corpus(report_doc)
+    return [str(f.get("title") or "(untitled)")[:120]
+            for f in payload.get("findings") or []
+            if isinstance(f, dict) and not envelope.observed(f.get("evidence"), corpus)]
+
+
+def evidence_message(titles: list) -> str:
+    return (
+        "finish_hunt was NOT accepted. These findings give evidence that is not a log "
+        "line from your tool results: " + "; ".join(titles) + ". For each, put one or "
+        "more real log lines in `evidence`, copied character for character from a tool "
+        "result (search or read_lines will fetch one), one line per line; keep any "
+        "count or explanation in the title or recommendation. Call finish_hunt again "
+        "with every finding. This is returned once; next time the findings are kept "
+        "as they are, and any without a real line stay out of the findings envelope."
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -318,6 +340,7 @@ def main():
     call_log = repeats.CallLog()
     completed = False
     finish_retries = 0
+    evidence_returned = False
 
     for _turn in range(MAX_TURNS):
         def _create(msgs=messages):
@@ -386,6 +409,24 @@ def main():
                             }
                         )
                         continue
+
+                    # Evidence must be a log line the tools returned, verbatim.
+                    # The schema has asked for that since v0.10.1, and on the
+                    # 2026-10-27 run two of five findings, the two rated high,
+                    # gave a summary instead, so the envelope rightly left them
+                    # out of Shadowfax. Asking was not enough; this checks, and
+                    # sends the answer back once naming the findings at fault.
+                    if ok and not evidence_returned:
+                        loose = unobserved_findings(payload, report.to_json())
+                        if loose:
+                            evidence_returned = True
+                            print(console.agent("hunt", console.c(
+                                f"{len(loose)} finding(s) give evidence that is not a log line "
+                                f"from the tool output; asking again.", console.YELLOW)))
+                            tool_results.append({
+                                "type": "tool_result", "tool_use_id": block.id,
+                                "is_error": True, "content": evidence_message(loose)})
+                            continue
 
                     if not ok:
                         print(f"[hunt] finish_hunt still incomplete ({reason}).")

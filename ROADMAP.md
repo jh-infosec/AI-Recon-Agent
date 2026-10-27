@@ -228,15 +228,22 @@ stay that way until a box gives them something to do.
 - Still not exercised live: the early-finish return. Every check passed on
   both runs, so it had nothing to send back.
 
-## v1.2.0 - the hunt quotes what it found
+## v1.2.0 - the hunt quotes what it found (shipped)
 
-- Every hunt finding should carry one log line, verbatim, as its evidence.
-  On the second live run the two highest-severity findings (the directory
-  brute force and the 200s on /admin/ and /backup/) had summaries as
-  evidence, so the envelope filter rightly left them out of Shadowfax.
-- The hunt never searched for WhatWeb's user agent, so purple, which works
-  only from the hunt record, could not see that step although the raw log
-  holds it. A known-tool user-agent sweep in `web_log_summary` would close it.
+- A hunt finding whose evidence is not a log line from the tool output is sent
+  back once before the hunt ends, naming the findings at fault. Replayed on
+  the second live run, it names exactly the two high findings Shadowfax never
+  received.
+- `web_log_summary` sweeps for known tools by user agent, each with a count,
+  time span and one verbatim line, so a recon step like WhatWeb reaches the
+  hunt record and purple.
+
+## v1.3.0 - next
+
+- A third live run to confirm v1.1.0 and v1.2.0 live: hunt and purple again
+  over the same logs, at about $0.60 for both.
+- The early-finish return still has not run live. It needs a target where a
+  check fails, such as a web port the agent forgets to enumerate.
 - Windows logs (v0.9.1), if the homelab gains a Windows box.
 
 ## Not planned
