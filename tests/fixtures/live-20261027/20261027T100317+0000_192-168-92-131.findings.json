@@ -1,0 +1,105 @@
+{
+  "envelope_version": "1.0",
+  "generated": "2026-10-27T10:05:25Z",
+  "source": {
+    "tool": "ai-recon-agent",
+    "version": "1.0.2",
+    "run_id": "5802a050"
+  },
+  "subject": {
+    "kind": "host",
+    "id": "192.168.92.131",
+    "label": "192.168.92.131"
+  },
+  "findings": [
+    {
+      "id": "2ba07a6f27694726",
+      "key": "open_port",
+      "severity": "info",
+      "title": "Port 22/tcp is open",
+      "evidence": "22/tcp open tcpwrapped",
+      "validated": true,
+      "data": {
+        "port": 22,
+        "service_claimed": "tcpwrapped"
+      }
+    },
+    {
+      "id": "1e55b9f4ca979150",
+      "key": "open_port",
+      "severity": "info",
+      "title": "Port 80/tcp is open",
+      "evidence": "80/tcp open http Apache httpd 2.4.69",
+      "validated": true,
+      "data": {
+        "port": 80,
+        "service_claimed": "http Apache httpd 2.4.69"
+      }
+    },
+    {
+      "id": "0b0a30550fe243a3",
+      "key": "web_path_found",
+      "severity": "info",
+      "title": "/admin answered on port 80",
+      "evidence": "GET /admin on port 80 returned HTTP 301",
+      "validated": true,
+      "data": {
+        "port": 80,
+        "path": "/admin",
+        "status": 301
+      }
+    },
+    {
+      "id": "7bcd381f93789b08",
+      "key": "web_path_found",
+      "severity": "info",
+      "title": "/backup answered on port 80",
+      "evidence": "GET /backup on port 80 returned HTTP 301",
+      "validated": true,
+      "data": {
+        "port": 80,
+        "path": "/backup",
+        "status": 301
+      }
+    },
+    {
+      "id": "fdd80f6ab2d6ebb9",
+      "key": "web_path_found",
+      "severity": "info",
+      "title": "/index.html answered on port 80",
+      "evidence": "GET /index.html on port 80 returned HTTP 200",
+      "validated": true,
+      "data": {
+        "port": 80,
+        "path": "/index.html",
+        "status": 200
+      }
+    },
+    {
+      "id": "93900fa4793bc4d8",
+      "key": "web_path_found",
+      "severity": "info",
+      "title": "/javascript answered on port 80",
+      "evidence": "GET /javascript on port 80 returned HTTP 301",
+      "validated": true,
+      "data": {
+        "port": 80,
+        "path": "/javascript",
+        "status": 301
+      }
+    },
+    {
+      "id": "70fa73a3f37513b1",
+      "key": "web_path_found",
+      "severity": "info",
+      "title": "/robots.txt answered on port 80",
+      "evidence": "GET /robots.txt on port 80 returned HTTP 200",
+      "validated": true,
+      "data": {
+        "port": 80,
+        "path": "/robots.txt",
+        "status": 200
+      }
+    }
+  ]
+}

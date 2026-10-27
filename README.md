@@ -1,6 +1,6 @@
 # ai-recon-agent
 
-**v1.0.2**
+**v1.1.0**
 
 ai-recon-agent is a small security study kit with two halves: a **red-team
 recon agent** for practicing enumeration on machines you're authorized to
@@ -179,6 +179,14 @@ Two rules are enforced in code, not asked for:
   line that shows it, and the quote must appear word for word in the hunt
   report. A quote that does not is sent back once, then reported as
   *unproven* and the run exits 3.
+- **A step marked unseen is checked against its own lines.** Each step goes to
+  the model with the hunt-record lines carrying its signature (its tool's
+  user agent, its path). Marking a step a blind spot while those lines exist,
+  or matching a page fetch to someone else's request, is sent back once
+  (v1.1.0).
+
+A recon call that was refused before it sent anything is listed as *never
+ran*, not as a blind spot: there was no traffic to miss.
 
 It reads two files and calls the API; it never touches a target. It needs a
 box whose logs you can collect, so a homelab VM, not an HTB or THM machine.

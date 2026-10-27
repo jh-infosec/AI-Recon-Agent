@@ -218,11 +218,25 @@ wordlists. The web and AD tools have been run live on earlier boxes; the
 early-finish return and the wordlists have only been tested offline, and
 stay that way until a box gives them something to do.
 
-## v1.1.0 - a richer lab
+## v1.1.0 - a richer lab (shipped)
 
-- A second live run against a target with a web server and firewall logging,
-  so the hunt has web and port-scan traces as well as SSH, and purple has more
-  than three steps to match. Its files become a second fixture set.
+- A second live run against the homelab VM with Apache, a `robots.txt`
+  pointing at `/backup/`, an empty `/admin/` listing, firewall SYN logging and
+  a corrected clock. Kept as `tests/fixtures/live-20261027/`.
+- It exercised the target-aware wordlist on a live target for the first time,
+  and found three recon defects (v1.0.2) and four purple ones (v1.1.0).
+- Still not exercised live: the early-finish return. Every check passed on
+  both runs, so it had nothing to send back.
+
+## v1.2.0 - the hunt quotes what it found
+
+- Every hunt finding should carry one log line, verbatim, as its evidence.
+  On the second live run the two highest-severity findings (the directory
+  brute force and the 200s on /admin/ and /backup/) had summaries as
+  evidence, so the envelope filter rightly left them out of Shadowfax.
+- The hunt never searched for WhatWeb's user agent, so purple, which works
+  only from the hunt record, could not see that step although the raw log
+  holds it. A known-tool user-agent sweep in `web_log_summary` would close it.
 - Windows logs (v0.9.1), if the homelab gains a Windows box.
 
 ## Not planned

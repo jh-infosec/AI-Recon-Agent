@@ -717,6 +717,9 @@ class PurpleReport:
         self.json_path = REPORTS_DIR / f"{base}.json"
         self._notes: list = []
         self._incomplete: str | None = None
+        self._contradicted_returned: list = []
+        self._contradicted: list = []
+        self._not_run: list = []
         self._rejected: list = []
         self._unverified_returned: list = []
         self._analysis: dict | None = None
@@ -729,6 +732,17 @@ class PurpleReport:
 
     def log_incomplete(self, reason: str):
         self._incomplete = reason
+
+    def log_contradicted_return(self, steps: list):
+        self._contradicted_returned = list(steps)
+
+    def log_contradicted(self, steps: list):
+        """Steps still at odds with their own lines after the one return."""
+        self._contradicted = list(steps)
+
+    def log_not_run(self, steps: list):
+        """Recon calls refused before they sent anything (v1.0.3)."""
+        self._not_run = [{"step": st.get("step"), "tool": st.get("tool")} for st in steps]
 
     def log_rejected(self, problem: str, payload):
         """
@@ -805,6 +819,9 @@ class PurpleReport:
             "incomplete_reason": self._incomplete,
             "notes": self._notes,
             "rejected": self._rejected,
+            "not_run": self._not_run,
+            "contradicted_returned": self._contradicted_returned,
+            "contradicted_steps": self._contradicted,
             "unverified_returned": self._unverified_returned,
             "unverified_steps": self._unverified,
             "narrative": (self._analysis or {}).get("narrative"),
@@ -823,6 +840,10 @@ class PurpleReport:
                f"- Generated (UTC): {self.ended_at}\n"]
         for n in self._notes:
             out.append(f"> {n}\n")
+        if self._not_run:
+            out.append("## Never ran\n\nRefused before sending anything, so not "
+                       "blind spots: " + ", ".join(f"step {x['step']} ({x['tool']})"
+                                                  for x in self._not_run) + "\n")
         if self._incomplete:
             out.append(f"## Incomplete\n\n{self._incomplete}\n")
             for i, rej in enumerate(self._rejected, 1):

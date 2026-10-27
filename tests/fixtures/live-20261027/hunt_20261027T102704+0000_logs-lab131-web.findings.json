@@ -1,0 +1,46 @@
+{
+  "envelope_version": "1.0",
+  "generated": "2026-10-27T10:29:32Z",
+  "source": {
+    "tool": "ai-recon-agent",
+    "version": "1.0.2",
+    "run_id": "9c4a5128"
+  },
+  "subject": {
+    "kind": "log_workspace",
+    "id": "logs/lab131-web",
+    "label": "logs/lab131-web"
+  },
+  "findings": [
+    {
+      "id": "f10e29eab9aaf0e1",
+      "key": "hunt_t1595",
+      "severity": "medium",
+      "title": "TCP SYN port scan against 192.168.92.131 from 192.168.92.129",
+      "evidence": "2026-10-27T10:03:22+0000 co1508kali2 kernel: FW-SYN: IN=eth0 OUT= MAC=00:0c:29:49:3a:d1:00:0c:29:e0:5e:06:08:00 SRC=192.168.92.129 DST=192.168.92.131 LEN=44 TOS=0x00 PREC=0x00 TTL=58 ID=842 PROTO=TCP SPT=36713 DPT=222 WINDOW=1024 RES=0x00 SYN URGP=0",
+      "validated": false,
+      "mitre": "T1595",
+      "recommendation": "Confirm with the firewall/host owner whether this is an authorized scan (lab exercise) or hostile recon. If unauthorized, block/rate-limit 192.168.92.129 at the perimeter and alert on any future SYN sweep from this host."
+    },
+    {
+      "id": "f7448bd69ad32adf",
+      "key": "hunt_t1595",
+      "severity": "low",
+      "title": "Nmap NSE HTTP fingerprinting against web server",
+      "evidence": "192.168.92.129 - - [27/Oct/2026:10:03:31 +0000] \"PROPFIND / HTTP/1.1\" 405 564 \"-\" \"Mozilla/5.0 (compatible; Nmap Scripting Engine; https://nmap.org/book/nse.html)\"",
+      "validated": false,
+      "mitre": "T1595",
+      "recommendation": "Treat as confirmation the scanning host moved from network-layer to application-layer recon; correlate with WAF/IDS alerts if available and watch for follow-up exploit attempts from the same source."
+    },
+    {
+      "id": "b541afbe34a82d24",
+      "key": "hunt_t1595",
+      "severity": "low",
+      "title": "sshd OpenSSL version-mismatch errors coincident with port-22 scan traffic",
+      "evidence": "2026-10-27T10:03:31+0000 co1508kali2 sshd[21658]: OpenSSL version mismatch. Built against 30000090, you have 30600050",
+      "validated": false,
+      "mitre": "T1595",
+      "recommendation": "These are library warnings, not auth failures - patch/rebuild sshd against the matching OpenSSL version to eliminate log noise, and separately confirm no actual authentication attempts exist in the real production auth log (this ssh.log sample contains no failed/successful login entries to analyze with auth_summary)."
+    }
+  ]
+}

@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.1.0] - 2026-10-27
+
+The second live run, kept as `tests/fixtures/live-20261027/`: recon (v1.0.1) against the homelab VM with Apache added, a hunt over its Apache log, firewall SYN log and sshd journal (v1.0.2), and purple over the two (v1.0.2). Recon and the hunt did well. The hunt rebuilt the whole chain from three logs: the port scan from firewall SYNs, nmap's web scripts by their user agent, 14,558 gobuster and ffuf requests, and sshd failing on every probe to port 22, tied to the scan by timing alone because those lines name no IP. (The sshd failures were the lab: installing Apache upgraded OpenSSL under an OpenSSH built against an older one.)
+
+Purple's count was wrong. It reported 9 of 15 steps seen and 6 blind spots; checked against the raw logs, one was a real blind spot. All four defects are fixed and replayed here against the real run, offline.
+
+Fixed: **refused calls counted as blind spots.** Two ffuf calls refused over their extension list (fixed in v1.0.2) sent nothing, and a blind spot is traffic a defender missed. `recon_steps()` now marks whether a step was sent; one that was not is listed as *never ran* in the report and the console, and is not put to the model.
+
+Fixed: **steps called blind with their own lines in front of the model.** The agent's requests for `/backup/` and `/admin/index.html` were in the hunt record and in the evidence, near the end of 300 lines that were mostly firewall SYNs, and both were reported as blind spots. The `robots.txt` fetch was matched to the student's manual `curl` from eight minutes earlier, with the agent's own line also present. Each step now goes to the model with `candidate_lines`, the hunt-record lines carrying its own signature (`step_signatures()`: its tool's user agent, its path), and `find_contradictions()` checks the answer against them in code: a step marked unseen while its lines exist, or a page fetch quoting a line that is not its own, is sent back once with those lines, in the same return as unverified quotes. Replaying the live answer flags exactly steps 3, 4 and 14. Step 2 (whatweb) is correctly not flagged: its requests are in the raw log but the hunt never searched for them, so they are not in the record purple works from.
+
+Fixed: **the narrative contradicted recon.** It called `/admin/` and `/backup/` "the single most actionable finding" though recon had found both empty: purple was given recon's commands and never its conclusions. Recon's summary now goes to the model as `conclusions`.
+
+Changed: **evidence lines are chosen per step, then spread, and deduplicated.** Before, they were the first 300 lines naming the attacker. They were not the cause of the misses above (an earlier reading in this release's development said they were, and was wrong), but each step's candidates are now guaranteed a place, duplicates no longer take space, and the rest is spread across the record instead of taken from the top.
+
+Tests: 21 new against the real run (953 passed, 6 skipped without a Shadowfax checkout). `ROADMAP.md` sets v1.2.0: the hunt quoting a log line for every finding, and a sweep for known tools' user agents.
+
 ## [1.0.2] - 2026-10-27
 
 From the second homelab run: the same VM with Apache added, a `robots.txt` naming `/backup/`, an empty `/admin/` listing, and firewall logging. The agent followed `robots.txt` to `/backup/`, found `/admin/` on its own, generated a target-aware wordlist for the first time on a live target, and concluded correctly that both directories held nothing real. Its output exposed three defects.

@@ -1,0 +1,3448 @@
+{
+  "schema": "ai-recon-agent/recon-report",
+  "schema_version": 2,
+  "tool_version": "1.0.1",
+  "untrusted": "Every tool_calls[].stdout, stderr and parsed value, and every hostname, path and banner anywhere in this file, came from the target or from a log, not from this tool. Anything that feeds this file to a model must treat those fields as evidence to analyse, never as instructions.",
+  "target": "192.168.92.131",
+  "platform": "homelab",
+  "note": "My own homelab VM - v1.0 live test",
+  "started": "2026-10-27T10:03:17+00:00",
+  "ended": "2026-10-27T10:05:25+00:00",
+  "complete": true,
+  "incomplete_reason": null,
+  "gate_returned": [],
+  "summary": {
+    "summary": "Target 192.168.92.131 was re-scanned after a prior session that only recorded SSH open. This run found port 80 (Apache/2.4.69 Debian) newly present alongside SSH (22, OpenSSH 9.3p2 Debian, tcpwrapped banner on this scan but previously confirmed as OpenSSH). The web root serves the stock Apache2 Debian default page, which whatweb corroborated (no CMS/app framework fingerprinted). robots.txt discloses a disallowed path, /backup/, which is the textbook robots.txt-leaks-a-hidden-path pattern - but fetching it showed it is only a 16-byte static placeholder page ('old site backup'), not an actual archive or sensitive file. A root-level gobuster run also surfaced /admin/, not referenced in robots.txt, which returns an Apache mod_autoindex directory listing. Critically, when the listing's actual link content was inspected (not just inferred from the directory name), it contained no real file entries - only the standard sort-header links and a parent-directory link. This means /admin is either currently empty or holds only dotfiles hidden by Apache's default IndexIgnore. A targeted ffuf pass with extensions (.php/.txt/.zip/.sql/.bak) against both /admin and /backup using a stack-tailored wordlist found nothing beyond uniform 403s on .htaccess/.htpasswd/.hta-family names - these are Apache's hardcoded protections and fire whether or not the file exists, so they are not evidence of a real file being present. Net effect: this session's main actionable surface is the HTTP service's two discovered-but-currently-inert paths, worth periodic re-checking since the box may populate /admin or /backup with real content later (directory listing being left on is itself a configuration weakness), plus the unchanged SSH service for credential-based entry once credentials are found elsewhere.",
+    "attack_surface": "\n<item>TCP 22 - SSH (OpenSSH 9.3p2 Debian, confirmed in prior session; this run's banner grab was inconclusive but port is open)</item>\n<item>TCP 80 - HTTP, Apache/2.4.69 (Debian), serving the stock default page</item>\n<item>/robots.txt discloses Disallow: /backup/ (reconnaissance leak, not an access control)</item>\n<item>/backup/ - public, returns a static placeholder page, autoindex not triggered (index.html present)</item>\n<item>/admin/ - public, Apache directory listing (autoindex) enabled, currently showing no linked files</item>\n<item>/.htaccess, /.htpasswd, /.hta - all return 403 server-wide (Apache default protection, not confirmation of file existence)</item>\n</attack_surface>\n<leads>\n<item>Re-check /admin/ and /backup/ periodically - directory listing being enabled on /admin is a real misconfiguration that could expose files if/when content is added or if dotfiles are present but hidden from the index; try explicit guesses (e.g. /admin/.git, /admin/config, known filenames) if context suggests an app that would deploy there</item>\n<item>robots.txt as a map of 'things the admin doesn't want crawled' is itself intel - confirm there are no other Disallow entries missed and consider checking for a sitemap.xml too</item>\n<item>No CMS/app was fingerprinted on port 80 (plain Debian default page) - if the real application lives on a virtual host, a vhost fuzz against a guessed domain name would be the next web step once a hostname is known (none was discoverable this run - no DNS service, no Host-based hints in headers or page content)</item>\n<item>SSH remains the most direct remote-access vector once any credentials are harvested from the web side; keep it in scope for a future credential-stuffing or key-based attack path once leads from HTTP are exhausted</item>\n</leads>\n<study_pointers>\n<item>\n<topic>robots.txt as reconnaissance (Disallow entries reveal paths, do not protect them)</topic>\n<mitre>T1190 - Exploit Public-Facing Application</mitre>\n<module>HTB Academy: Web Requests / Attacking Web Applications with Ffuf</module>\n<cve></cve>\n</item>\n<item>\n<topic>Apache mod_autoindex directory listing misconfiguration and how to verify listing contents rather than inferring from folder names</topic>\n<mitre>T1190 - Exploit Public-Facing Application</mitre>\n<module>HTB Academy: Attacking Web Applications with Ffuf</module>\n<cve></cve>\n</item>\n<item>\n<topic>Why Apache returns 403 on .ht* files unconditionally (false positives during extension fuzzing) and how to distinguish real hits from server-wide protections</topic>\n<mitre>T1190 - Exploit Public-Facing Application</mitre>\n<module>HTB Academy: Attacking Web Applications with Ffuf</module>\n<cve></cve>\n</item>\n<item>\n<topic>SSH footprinting and version-based research for OpenSSH 9.3p2 on Debian</topic>\n<mitre>T1021.004 - Remote Services: SSH</mitre>\n<module>HTB Academy: Footprinting (SSH section)</module>\n<cve></cve>\n</item>\n<item>\n<topic>Virtual host discovery methodology for when the app isn't on the default vhost</topic>\n<mitre>T1590.002 - Gather Victim Network Information: DNS</mitre>\n<module>HTB Academy: Attacking Web Applications with Ffuf (virtual host fuzzing)</module>\n<cve></cve>\n</item>\n</study_pointers>\n</finish_session>\n\n"
+  },
+  "coverage": {
+    "summary": {
+      "total": 3,
+      "satisfied": 3,
+      "complete": true,
+      "missed": [],
+      "from_prior": [],
+      "empty": [],
+      "blocked": [],
+      "partial": []
+    },
+    "checks": [
+      {
+        "name": "Port scan performed",
+        "satisfied": true,
+        "state": "pass",
+        "from_prior": false,
+        "detail": "nmap ran"
+      },
+      {
+        "name": "Web service on 80 fingerprinted",
+        "satisfied": true,
+        "state": "pass",
+        "from_prior": false,
+        "detail": "the tool ran and returned usable results"
+      },
+      {
+        "name": "Web service on 80 content-enumerated",
+        "satisfied": true,
+        "state": "pass",
+        "from_prior": false,
+        "detail": "the tool ran and returned usable results"
+      }
+    ]
+  },
+  "surface": {
+    "scanned": true,
+    "open_ports": [
+      22,
+      80
+    ],
+    "services": {
+      "22": "tcpwrapped",
+      "80": "http Apache httpd 2.4.69"
+    },
+    "web_ports": [
+      80
+    ],
+    "hostnames": [],
+    "dns_open": false,
+    "non_content_http": {},
+    "paths": {
+      "80": {
+        "/.hta": 403,
+        "/.hta.bak": 403,
+        "/.hta.bak.bak": 403,
+        "/.hta.bak.php": 403,
+        "/.hta.bak.sql": 403,
+        "/.hta.bak.txt": 403,
+        "/.hta.bak.zip": 403,
+        "/.hta.old": 403,
+        "/.hta.old.bak": 403,
+        "/.hta.old.php": 403,
+        "/.hta.old.sql": 403,
+        "/.hta.old.txt": 403,
+        "/.hta.old.zip": 403,
+        "/.hta.orig": 403,
+        "/.hta.orig.bak": 403,
+        "/.hta.orig.php": 403,
+        "/.hta.orig.sql": 403,
+        "/.hta.orig.txt": 403,
+        "/.hta.orig.zip": 403,
+        "/.hta.php": 403,
+        "/.hta.save": 403,
+        "/.hta.save.bak": 403,
+        "/.hta.save.php": 403,
+        "/.hta.save.sql": 403,
+        "/.hta.save.txt": 403,
+        "/.hta.save.zip": 403,
+        "/.hta.sql": 403,
+        "/.hta.swp": 403,
+        "/.hta.swp.bak": 403,
+        "/.hta.swp.php": 403,
+        "/.hta.swp.sql": 403,
+        "/.hta.swp.txt": 403,
+        "/.hta.swp.zip": 403,
+        "/.hta.txt": 403,
+        "/.hta.zip": 403,
+        "/.htaccess": 403,
+        "/.htaccess.bak": 403,
+        "/.htaccess.bak.bak": 403,
+        "/.htaccess.bak.php": 403,
+        "/.htaccess.bak.sql": 403,
+        "/.htaccess.bak.txt": 403,
+        "/.htaccess.bak.zip": 403,
+        "/.htaccess.old": 403,
+        "/.htaccess.old.bak": 403,
+        "/.htaccess.old.php": 403,
+        "/.htaccess.old.sql": 403,
+        "/.htaccess.old.txt": 403,
+        "/.htaccess.old.zip": 403,
+        "/.htaccess.orig": 403,
+        "/.htaccess.orig.bak": 403,
+        "/.htaccess.orig.php": 403,
+        "/.htaccess.orig.sql": 403,
+        "/.htaccess.orig.txt": 403,
+        "/.htaccess.orig.zip": 403,
+        "/.htaccess.php": 403,
+        "/.htaccess.save": 403,
+        "/.htaccess.save.bak": 403,
+        "/.htaccess.save.php": 403,
+        "/.htaccess.save.sql": 403,
+        "/.htaccess.save.txt": 403,
+        "/.htaccess.save.zip": 403,
+        "/.htaccess.sql": 403,
+        "/.htaccess.swp": 403,
+        "/.htaccess.swp.bak": 403,
+        "/.htaccess.swp.php": 403,
+        "/.htaccess.swp.sql": 403,
+        "/.htaccess.swp.txt": 403,
+        "/.htaccess.swp.zip": 403,
+        "/.htaccess.txt": 403,
+        "/.htaccess.zip": 403,
+        "/.htaccess~": 403,
+        "/.htaccess~.bak": 403,
+        "/.htaccess~.php": 403,
+        "/.htaccess~.sql": 403,
+        "/.htaccess~.txt": 403,
+        "/.htaccess~.zip": 403,
+        "/.hta~": 403,
+        "/.hta~.bak": 403,
+        "/.hta~.php": 403,
+        "/.hta~.sql": 403,
+        "/.hta~.txt": 403,
+        "/.hta~.zip": 403,
+        "/.htpasswd": 403,
+        "/.htpasswd.bak": 403,
+        "/.htpasswd.bak.bak": 403,
+        "/.htpasswd.bak.php": 403,
+        "/.htpasswd.bak.sql": 403,
+        "/.htpasswd.bak.txt": 403,
+        "/.htpasswd.bak.zip": 403,
+        "/.htpasswd.old": 403,
+        "/.htpasswd.old.bak": 403,
+        "/.htpasswd.old.php": 403,
+        "/.htpasswd.old.sql": 403,
+        "/.htpasswd.old.txt": 403,
+        "/.htpasswd.old.zip": 403,
+        "/.htpasswd.orig": 403,
+        "/.htpasswd.orig.bak": 403,
+        "/.htpasswd.orig.php": 403,
+        "/.htpasswd.orig.sql": 403,
+        "/.htpasswd.orig.txt": 403,
+        "/.htpasswd.orig.zip": 403,
+        "/.htpasswd.php": 403,
+        "/.htpasswd.save": 403,
+        "/.htpasswd.save.bak": 403,
+        "/.htpasswd.save.php": 403,
+        "/.htpasswd.save.sql": 403,
+        "/.htpasswd.save.txt": 403,
+        "/.htpasswd.save.zip": 403,
+        "/.htpasswd.sql": 403,
+        "/.htpasswd.swp": 403,
+        "/.htpasswd.swp.bak": 403,
+        "/.htpasswd.swp.php": 403,
+        "/.htpasswd.swp.sql": 403,
+        "/.htpasswd.swp.txt": 403,
+        "/.htpasswd.swp.zip": 403,
+        "/.htpasswd.txt": 403,
+        "/.htpasswd.zip": 403,
+        "/.htpasswd~": 403,
+        "/.htpasswd~.bak": 403,
+        "/.htpasswd~.php": 403,
+        "/.htpasswd~.sql": 403,
+        "/.htpasswd~.txt": 403,
+        "/.htpasswd~.zip": 403,
+        "/admin": 301,
+        "/backup": 301,
+        "/index.html": 200,
+        "/javascript": 301,
+        "/robots.txt": 200,
+        "/server-status": 403
+      }
+    },
+    "smb_open": false,
+    "ldap_open": false,
+    "smb_outcome": "",
+    "ldap_outcome": "",
+    "enum_outcome": {
+      "80": "ok"
+    },
+    "fingerprint_outcome": {
+      "80": "ok"
+    }
+  },
+  "change_since_last_session": {
+    "previous": {
+      "schema": 1,
+      "tool_version": "0.10.3",
+      "target": "192.168.92.131",
+      "platform": "homelab",
+      "timestamp": "2026-10-23T08:42:16Z",
+      "surface": {
+        "scanned": true,
+        "open_ports": [
+          22
+        ],
+        "services": {
+          "22": "ssh OpenSSH 9.3p2 Debian 1"
+        },
+        "web_ports": [],
+        "hostnames": [],
+        "dns_open": false,
+        "paths": {}
+      },
+      "coverage": {
+        "total": 1,
+        "satisfied": 1,
+        "complete": true,
+        "missed": []
+      },
+      "actions": {
+        "fingerprinted": [],
+        "enumerated": [],
+        "vhost_fuzzed": [],
+        "dns_enumerated": false,
+        "enum_outcome": {},
+        "fingerprint_outcome": {},
+        "smb_outcome": "",
+        "ldap_outcome": ""
+      },
+      "source": "20261023T084216Z.json"
+    },
+    "delta": [
+      "NEW open ports: 80",
+      "port 22 changed: ssh OpenSSH 9.3p2 Debian 1 -> tcpwrapped",
+      "NEW paths on 80: /.hta, /.hta.bak, /.hta.bak.bak, /.hta.bak.php, /.hta.bak.sql, /.hta.bak.txt, /.hta.bak.zip, /.hta.old, /.hta.old.bak, /.hta.old.php, /.hta.old.sql, /.hta.old.txt (+88 more)"
+    ],
+    "snapshot": "20261027T100525Z.json"
+  },
+  "telemetry": {
+    "model": "claude-sonnet-5",
+    "turns": 9,
+    "input_tokens": 90530,
+    "output_tokens": 7726,
+    "cache_read_tokens": 68850,
+    "cache_write_tokens": 21662,
+    "estimated_cost_usd": 0.2178,
+    "uncached_cost_usd": 0.3875,
+    "per_turn": [
+      {
+        "turn": 1,
+        "input": 2,
+        "output": 72,
+        "cache_write": 4916,
+        "cache_read": 0
+      },
+      {
+        "turn": 2,
+        "input": 2,
+        "output": 275,
+        "cache_write": 303,
+        "cache_read": 4916
+      },
+      {
+        "turn": 3,
+        "input": 2,
+        "output": 289,
+        "cache_write": 654,
+        "cache_read": 5219
+      },
+      {
+        "turn": 4,
+        "input": 2,
+        "output": 395,
+        "cache_write": 821,
+        "cache_read": 5873
+      },
+      {
+        "turn": 5,
+        "input": 2,
+        "output": 829,
+        "cache_write": 1332,
+        "cache_read": 6694
+      },
+      {
+        "turn": 6,
+        "input": 2,
+        "output": 491,
+        "cache_write": 329,
+        "cache_read": 8026
+      },
+      {
+        "turn": 7,
+        "input": 2,
+        "output": 464,
+        "cache_write": 673,
+        "cache_read": 8355
+      },
+      {
+        "turn": 8,
+        "input": 2,
+        "output": 964,
+        "cache_write": 11711,
+        "cache_read": 9028
+      },
+      {
+        "turn": 9,
+        "input": 2,
+        "output": 3947,
+        "cache_write": 923,
+        "cache_read": 20739
+      }
+    ]
+  },
+  "timeline": [
+    {
+      "type": "tool",
+      "step": 1,
+      "tool": "run_nmap",
+      "input": {
+        "ports": "top1000"
+      },
+      "command": "/usr/bin/nmap -sV -sC -Pn -oX - --top-ports 1000 192.168.92.131",
+      "returncode": 0,
+      "timed_out": false,
+      "started_at": "2026-10-27T10:03:19+00:00",
+      "finished_at": "2026-10-27T10:03:36+00:00",
+      "parsed": {
+        "hosts": [
+          {
+            "address": "192.168.92.131",
+            "hostnames": [],
+            "ports": [
+              {
+                "port": 22,
+                "protocol": "tcp",
+                "state": "open",
+                "service": "tcpwrapped",
+                "product": null,
+                "version": null,
+                "extrainfo": null,
+                "tunnel": null,
+                "scripts": {
+                  "ssh-hostkey": "ERROR: Script execution failed (use -d to debug)"
+                }
+              },
+              {
+                "port": 80,
+                "protocol": "tcp",
+                "state": "open",
+                "service": "http",
+                "product": "Apache httpd",
+                "version": "2.4.69",
+                "extrainfo": "(Debian)",
+                "tunnel": null,
+                "scripts": {
+                  "http-robots.txt": "1 disallowed entry \n/backup/",
+                  "http-server-header": "Apache/2.4.69 (Debian)",
+                  "http-title": "Apache2 Debian Default Page: It works"
+                }
+              }
+            ]
+          }
+        ],
+        "open_ports": [
+          22,
+          80
+        ],
+        "hostnames": []
+      },
+      "stdout": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE nmaprun>\n<?xml-stylesheet href=\"file:///usr/share/nmap/nmap.xsl\" type=\"text/xsl\"?>\n<!-- Nmap 7.99 scan initiated Tue Oct 27 12:03:19 2026 as: /usr/lib/nmap/nmap -&#45;privileged -sV -sC -Pn -oX - -&#45;top-ports 1000 192.168.92.131 -->\n<nmaprun scanner=\"nmap\" args=\"/usr/lib/nmap/nmap -&#45;privileged -sV -sC -Pn -oX - -&#45;top-ports 1000 192.168.92.131\" start=\"1793095399\" startstr=\"Tue Oct 27 12:03:19 2026\" version=\"7.99\" xmloutputversion=\"1.05\">\n<scaninfo type=\"syn\" protocol=\"tcp\" numservices=\"1000\" services=\"1,3-4,6-7,9,13,17,19-26,30,32-33,37,42-43,49,53,70,79-85,88-90,99-100,106,109-111,113,119,125,135,139,143-144,146,161,163,179,199,211-212,222,254-256,259,264,280,301,306,311,340,366,389,406-407,416-417,425,427,443-445,458,464-465,481,497,500,512-515,524,541,543-545,548,554-555,563,587,593,616-617,625,631,636,646,648,666-668,683,687,691,700,705,711,714,720,722,726,749,765,777,783,787,800-801,808,843,873,880,888,898,900-903,911-912,981,987,990,992-993,995,999-1002,1007,1009-1011,1021-1100,1102,1104-1108,1110-1114,1117,1119,1121-1124,1126,1130-1132,1137-1138,1141,1145,1147-1149,1151-1152,1154,1163-1166,1169,1174-1175,1183,1185-1187,1192,1198-1199,1201,1213,1216-1218,1233-1234,1236,1244,1247-1248,1259,1271-1272,1277,1287,1296,1300-1301,1309-1311,1322,1328,1334,1352,1417,1433-1434,1443,1455,1461,1494,1500-1501,1503,1521,1524,1533,1556,1580,1583,1594,1600,1641,1658,1666,1687-1688,1700,1717-1721,1723,1755,1761,1782-1783,1801,1805,1812,1839-1840,1862-1864,1875,1900,1914,1935,1947,1971-1972,1974,1984,1998-2010,2013,2020-2022,2030,2033-2035,2038,2040-2043,2045-2049,2065,2068,2099-2100,2103,2105-2107,2111,2119,2121,2126,2135,2144,2160-2161,2170,2179,2190-2191,2196,2200,2222,2251,2260,2288,2301,2323,2366,2381-2383,2393-2394,2399,2401,2492,2500,2522,2525,2557,2601-2602,2604-2605,2607-2608,2638,2701-2702,2710,2717-2718,2725,2800,2809,2811,2869,2875,2909-2910,2920,2967-2968,2998,3000-3001,3003,3005-3006,3011,3017,3030-3031,3052,3071,3077,3128,3168,3211,3221,3260-3261,3268-3269,3283,3300-3301,3306,3322-3325,3333,3351,3367,3369-3372,3389-3390,3404,3476,3493,3517,3527,3546,3551,3580,3659,3689-3690,3703,3737,3766,3784,3800-3801,3809,3814,3826-3828,3851,3869,3871,3878,3880,3889,3905,3914,3918,3920,3945,3971,3986,3995,3998,4000-4006,4045,4111,4125-4126,4129,4224,4242,4279,4321,4343,4443-4446,4449,4550,4567,4662,4848,4899-4900,4998,5000-5004,5009,5030,5033,5050-5051,5054,5060-5061,5080,5087,5100-5102,5120,5190,5200,5214,5221-5222,5225-5226,5269,5280,5298,5357,5405,5414,5431-5432,5440,5500,5510,5544,5550,5555,5560,5566,5631,5633,5666,5678-5679,5718,5730,5800-5802,5810-5811,5815,5822,5825,5850,5859,5862,5877,5900-5904,5906-5907,5910-5911,5915,5922,5925,5950,5952,5959-5963,5985-5989,5998-6007,6009,6025,6059,6100-6101,6106,6112,6123,6129,6156,6346,6389,6502,6510,6543,6547,6565-6567,6580,6646,6666-6669,6689,6692,6699,6779,6788-6789,6792,6839,6881,6901,6969,7000-7002,7004,7007,7019,7025,7070,7100,7103,7106,7200-7201,7402,7435,7443,7496,7512,7625,7627,7676,7741,7777-7778,7800,7911,7920-7921,7937-7938,7999-8002,8007-8011,8021-8022,8031,8042,8045,8080-8090,8093,8099-8100,8180-8181,8192-8194,8200,8222,8254,8290-8292,8300,8333,8383,8400,8402,8443,8500,8600,8649,8651-8652,8654,8701,8800,8873,8888,8899,8994,9000-9003,9009-9011,9040,9050,9071,9080-9081,9090-9091,9099-9103,9110-9111,9200,9207,9220,9290,9415,9418,9485,9500,9502-9503,9535,9575,9593-9595,9618,9666,9876-9878,9898,9900,9917,9929,9943-9944,9968,9998-10004,10009-10010,10012,10024-10025,10082,10180,10215,10243,10566,10616-10617,10621,10626,10628-10629,10778,11110-11111,11967,12000,12174,12265,12345,13456,13722,13782-13783,14000,14238,14441-14442,15000,15002-15004,15660,15742,16000-16001,16012,16016,16018,16080,16113,16992-16993,17877,17988,18040,18101,18988,19101,19283,19315,19350,19780,19801,19842,20000,20005,20031,20221-20222,20828,21571,22939,23502,24444,24800,25734-25735,26214,27000,27352-27353,27355-27356,27715,28201,30000,30718,30951,31038,31337,32768-32785,33354,33899,34571-34573,35500,38292,40193,40911,41511,42510,44176,44442-44443,44501,45100,48080,49152-49161,49163,49165,49167,49175-49176,49400,49999-50003,50006,50300,50389,50500,50636,50800,51103,51493,52673,52822,52848,52869,54045,54328,55055-55056,55555,55600,56737-56738,57294,57797,58080,60020,60443,61532,61900,62078,63331,64623,64680,65000,65129,65389\"/>\n<verbose level=\"0\"/>\n<debugging level=\"0\"/>\n<hosthint><status state=\"up\" reason=\"arp-response\" reason_ttl=\"0\"/>\n<address addr=\"192.168.92.131\" addrtype=\"ipv4\"/>\n<address addr=\"00:0C:29:49:3A:D1\" addrtype=\"mac\" vendor=\"VMware\"/>\n<hostnames>\n</hostnames>\n</hosthint>\n<host starttime=\"1793095400\" endtime=\"1793095416\"><status state=\"up\" reason=\"arp-response\" reason_ttl=\"0\"/>\n<address addr=\"192.168.92.131\" addrtype=\"ipv4\"/>\n<address addr=\"00:0C:29:49:3A:D1\" addrtype=\"mac\" vendor=\"VMware\"/>\n<hostnames>\n</hostnames>\n<ports><extraports state=\"filtered\" count=\"998\">\n<extrareasons reason=\"no-response\" count=\"998\" proto=\"tcp\" ports=\"1,3-4,6-7,9,13,17,19-21,23-26,30,32-33,37,42-43,49,53,70,79,81-85,88-90,99-100,106,109-111,113,119,125,135,139,143-144,146,161,163,179,199,211-212,222,254-256,259,264,280,301,306,311,340,366,389,406-407,416-417,425,427,443-445,458,464-465,481,497,500,512-515,524,541,543-545,548,554-555,563,587,593,616-617,625,631,636,646,648,666-668,683,687,691,700,705,711,714,720,722,726,749,765,777,783,787,800-801,808,843,873,880,888,898,900-903,911-912,981,987,990,992-993,995,999-1002,1007,1009-1011,1021-1100,1102,1104-1108,1110-1114,1117,1119,1121-1124,1126,1130-1132,1137-1138,1141,1145,1147-1149,1151-1152,1154,1163-1166,1169,1174-1175,1183,1185-1187,1192,1198-1199,1201,1213,1216-1218,1233-1234,1236,1244,1247-1248,1259,1271-1272,1277,1287,1296,1300-1301,1309-1311,1322,1328,1334,1352,1417,1433-1434,1443,1455,1461,1494,1500-1501,1503,1521,1524,1533,1556,1580,1583,1594,1600,1641,1658,1666,1687-1688,1700,1717-1721,1723,1755,1761,1782-1783,1801,1805,1812,1839-1840,1862-1864,1875,1900,1914,1935,1947,1971-1972,1974,1984,1998-2010,2013,2020-2022,2030,2033-2035,2038,2040-2043,2045-2049,2065,2068,2099-2100,2103,2105-2107,2111,2119,2121,2126,2135,2144,2160-2161,2170,2179,2190-2191,2196,2200,2222,2251,2260,2288,2301,2323,2366,2381-2383,2393-2394,2399,2401,2492,2500,2522,2525,2557,2601-2602,2604-2605,2607-2608,2638,2701-2702,2710,2717-2718,2725,2800,2809,2811,2869,2875,2909-2910,2920,2967-2968,2998,3000-3001,3003,3005-3006,3011,3017,3030-3031,3052,3071,3077,3128,3168,3211,3221,3260-3261,3268-3269,3283,3300-3301,3306,3322-3325,3333,3351,3367,3369-3372,3389-3390,3404,3476,3493,3517,3527,3546,3551,3580,3659,3689-3690,3703,3737,3766,3784,3800-3801,3809,3814,3826-3828,3851,3869,3871,3878,3880,3889,3905,3914,3918,3920,3945,3971,3986,3995,3998,4000-4006,4045,4111,4125-4126,4129,4224,4242,4279,4321,4343,4443-4446,4449,4550,4567,4662,4848,4899-4900,4998,5000-5004,5009,5030,5033,5050-5051,5054,5060-5061,5080,5087,5100-5102,5120,5190,5200,5214,5221-5222,5225-5226,5269,5280,5298,5357,5405,5414,5431-5432,5440,5500,5510,5544,5550,5555,5560,5566,5631,5633,5666,5678-5679,5718,5730,5800-5802,5810-5811,5815,5822,5825,5850,5859,5862,5877,5900-5904,5906-5907,5910-5911,5915,5922,5925,5950,5952,5959-5963,5985-5989,5998-6007,6009,6025,6059,6100-6101,6106,6112,6123,6129,6156,6346,6389,6502,6510,6543,6547,6565-6567,6580,6646,6666-6669,6689,6692,6699,6779,6788-6789,6792,6839,6881,6901,6969,7000-7002,7004,7007,7019,7025,7070,7100,7103,7106,7200-7201,7402,7435,7443,7496,7512,7625,7627,7676,7741,7777-7778,7800,7911,7920-7921,7937-7938,7999-8002,8007-8011,8021-8022,8031,8042,8045,8080-8090,8093,8099-8100,8180-8181,8192-8194,8200,8222,8254,8290-8292,8300,8333,8383,8400,8402,8443,8500,8600,8649,8651-8652,8654,8701,8800,8873,8888,8899,8994,9000-9003,9009-9011,9040,9050,9071,9080-9081,9090-9091,9099-9103,9110-9111,9200,9207,9220,9290,9415,9418,9485,9500,9502-9503,9535,9575,9593-9595,9618,9666,9876-9878,9898,9900,9917,9929,9943-9944,9968,9998-10004,10009-10010,10012,10024-10025,10082,10180,10215,10243,10566,10616-10617,10621,10626,10628-10629,10778,11110-11111,11967,12000,12174,12265,12345,13456,13722,13782-13783,14000,14238,14441-14442,15000,15002-15004,15660,15742,16000-16001,16012,16016,16018,16080,16113,16992-16993,17877,17988,18040,18101,18988,19101,19283,19315,19350,19780,19801,19842,20000,20005,20031,20221-20222,20828,21571,22939,23502,24444,24800,25734-25735,26214,27000,27352-27353,27355-27356,27715,28201,30000,30718,30951,31038,31337,32768-32785,33354,33899,34571-34573,35500,38292,40193,40911,41511,42510,44176,44442-44443,44501,45100,48080,49152-49161,49163,49165,49167,49175-49176,49400,49999-50003,50006,50300,50389,50500,50636,50800,51103,51493,52673,52822,52848,52869,54045,54328,55055-55056,55555,55600,56737-56738,57294,57797,58080,60020,60443,61532,61900,62078,63331,64623,64680,65000,65129,65389\"/>\n</extraports>\n<port protocol=\"tcp\" portid=\"22\"><state state=\"open\" reason=\"syn-ack\" reason_ttl=\"64\"/><service name=\"tcpwrapped\" method=\"probed\" conf=\"8\"/><script id=\"ssh-hostkey\" output=\"ERROR: Script execution failed (use -d to debug)\"/></port>\n<port protocol=\"tcp\" portid=\"80\"><state state=\"open\" reason=\"syn-ack\" reason_ttl=\"64\"/><service name=\"http\" product=\"Apache httpd\" version=\"2.4.69\" extrainfo=\"(Debian)\" method=\"probed\" conf=\"10\"><cpe>cpe:/a:apache:http_server:2.4.69</cpe></service><script id=\"http-robots.txt\" output=\"1 disallowed entry &#xa;/backup/\"/><script id=\"http-server-header\" output=\"Apache/2.4.69 (Debian)\"><elem>Apache/2.4.69 (Debian)</elem>\n</script><script id=\"http-title\" output=\"Apache2 Debian Default Page: It works\"><elem key=\"title\">Apache2 Debian Default Page: It works</elem>\n</script></port>\n</ports>\n<times srtt=\"322\" rttvar=\"1256\" to=\"100000\"/>\n</host>\n<runstats><finished time=\"1793095416\" timestr=\"Tue Oct 27 12:03:36 2026\" summary=\"Nmap done at Tue Oct 27 12:03:36 2026; 1 IP address (1 host up) scanned in 16.77 seconds\" elapsed=\"16.77\" exit=\"success\"/><hosts up=\"1\" down=\"0\" total=\"1\"/>\n</runstats>\n</nmaprun>\n",
+      "stdout_truncated": false,
+      "stderr": "",
+      "stderr_truncated": false
+    },
+    {
+      "type": "analysis",
+      "text": "Port 80 is new compared to the prior session (which only showed SSH). This is a meaningful change - the box now runs Apache 2.4.69 with a robots.txt disclosing a `/backup/` path. Let's fingerprint the web server and look at robots.txt directly."
+    },
+    {
+      "type": "tool",
+      "step": 2,
+      "tool": "run_whatweb",
+      "input": {
+        "port": 80
+      },
+      "command": "/usr/bin/whatweb -a 3 --log-json=/tmp/tmpih1l3ivw/whatweb.json http://192.168.92.131:80",
+      "returncode": 0,
+      "timed_out": false,
+      "started_at": "2026-10-27T10:03:40+00:00",
+      "finished_at": "2026-10-27T10:03:46+00:00",
+      "parsed": {
+        "targets": [
+          {
+            "target": "http://192.168.92.131:80",
+            "status": 200
+          }
+        ],
+        "plugins": {
+          "Apache": [
+            "2.4.69"
+          ],
+          "Country": [
+            "RESERVED",
+            "ZZ"
+          ],
+          "HTTPServer": [
+            "Apache/2.4.69 (Debian)"
+          ],
+          "IP": [
+            "192.168.92.131"
+          ],
+          "Title": [
+            "Apache2 Debian Default Page: It works"
+          ]
+        }
+      },
+      "stdout": "\u001b[1m\u001b[34mhttp://192.168.92.131:80\u001b[0m [200 OK] \u001b[1mApache\u001b[0m[\u001b[1m\u001b[32m2.4.69\u001b[0m], \u001b[1mCountry\u001b[0m[\u001b[0m\u001b[22mRESERVED\u001b[0m][\u001b[1m\u001b[31mZZ\u001b[0m], \u001b[1mHTTPServer\u001b[0m[\u001b[1m\u001b[31mDebian Linux\u001b[0m][\u001b[1m\u001b[36mApache/2.4.69 (Debian)\u001b[0m], \u001b[1mIP\u001b[0m[\u001b[0m\u001b[22m192.168.92.131\u001b[0m], \u001b[1mTitle\u001b[0m[\u001b[1m\u001b[33mApache2 Debian Default Page: It works\u001b[0m]\n",
+      "stdout_truncated": false,
+      "stderr": "",
+      "stderr_truncated": false
+    },
+    {
+      "type": "tool",
+      "step": 3,
+      "tool": "fetch_page",
+      "input": {
+        "path": "/robots.txt",
+        "port": 80
+      },
+      "command": "GET http://192.168.92.131:80/robots.txt",
+      "returncode": 200,
+      "timed_out": false,
+      "started_at": "2026-10-27T10:03:46+00:00",
+      "finished_at": "2026-10-27T10:03:46+00:00",
+      "parsed": {
+        "title": null,
+        "comments": [],
+        "forms": [],
+        "links": [],
+        "scripts": [],
+        "generator": null,
+        "preview": "User-agent: *\nDisallow: /backup/",
+        "status": 200,
+        "url": "http://192.168.92.131:80/robots.txt",
+        "truncated": false,
+        "headers": {
+          "Server": "Apache/2.4.69 (Debian)",
+          "Content-Type": "text/plain"
+        }
+      },
+      "stdout": "User-agent: *\nDisallow: /backup/\n",
+      "stdout_truncated": false,
+      "stderr": "",
+      "stderr_truncated": false
+    },
+    {
+      "type": "analysis",
+      "text": "Confirmed: whatweb shows a stock Apache Debian default page (no CMS fingerprint), and robots.txt explicitly discloses `/backup/` as disallowed - a classic case of robots.txt leaking a path that's meant to be hidden rather than protected. Let's look directly at `/backup/` and then do a directory enumeration pass."
+    },
+    {
+      "type": "tool",
+      "step": 4,
+      "tool": "fetch_page",
+      "input": {
+        "path": "/backup/",
+        "port": 80
+      },
+      "command": "GET http://192.168.92.131:80/backup/",
+      "returncode": 200,
+      "timed_out": false,
+      "started_at": "2026-10-27T10:03:49+00:00",
+      "finished_at": "2026-10-27T10:03:49+00:00",
+      "parsed": {
+        "title": null,
+        "comments": [],
+        "forms": [],
+        "links": [],
+        "scripts": [],
+        "generator": null,
+        "preview": "old site backup",
+        "status": 200,
+        "url": "http://192.168.92.131:80/backup/",
+        "truncated": false,
+        "headers": {
+          "Server": "Apache/2.4.69 (Debian)",
+          "Content-Type": "text/html"
+        }
+      },
+      "stdout": "old site backup\n",
+      "stdout_truncated": false,
+      "stderr": "",
+      "stderr_truncated": false
+    },
+    {
+      "type": "tool",
+      "step": 5,
+      "tool": "run_gobuster",
+      "input": {
+        "port": 80
+      },
+      "command": "/usr/bin/gobuster dir -u http://192.168.92.131:80 -w /usr/share/dirb/wordlists/common.txt -t 20",
+      "returncode": 0,
+      "timed_out": false,
+      "started_at": "2026-10-27T10:03:49+00:00",
+      "finished_at": "2026-10-27T10:03:53+00:00",
+      "parsed": {
+        "results": [
+          {
+            "path": "/admin",
+            "status": 301,
+            "size": 356,
+            "redirect": "http://192.168.92.131/admin/"
+          },
+          {
+            "path": "/backup",
+            "status": 301,
+            "size": 357,
+            "redirect": "http://192.168.92.131/backup/"
+          },
+          {
+            "path": "/.hta",
+            "status": 403,
+            "size": 319
+          },
+          {
+            "path": "/.htaccess",
+            "status": 403,
+            "size": 319
+          },
+          {
+            "path": "/.htpasswd",
+            "status": 403,
+            "size": 319
+          },
+          {
+            "path": "/index.html",
+            "status": 200,
+            "size": 10701
+          },
+          {
+            "path": "/javascript",
+            "status": 301,
+            "size": 361,
+            "redirect": "http://192.168.92.131/javascript/"
+          },
+          {
+            "path": "/robots.txt",
+            "status": 200,
+            "size": 33
+          },
+          {
+            "path": "/server-status",
+            "status": 403,
+            "size": 319
+          }
+        ],
+        "count": 9
+      },
+      "stdout": "===============================================================\nGobuster v3.8.2\nby OJ Reeves (@TheColonial) & Christian Mehlmauer (@firefart)\n===============================================================\n[+] Url:                     http://192.168.92.131:80\n[+] Method:                  GET\n[+] Threads:                 20\n[+] Wordlist:                /usr/share/dirb/wordlists/common.txt\n[+] Negative Status codes:   404\n[+] User Agent:              gobuster/3.8.2\n[+] Timeout:                 10s\n===============================================================\nStarting gobuster in directory enumeration mode\n===============================================================\nadmin                (Status: 301) [Size: 356] [--> http://192.168.92.131/admin/]\nbackup               (Status: 301) [Size: 357] [--> http://192.168.92.131/backup/]\n.hta                 (Status: 403) [Size: 319]\n.htaccess            (Status: 403) [Size: 319]\n.htpasswd            (Status: 403) [Size: 319]\nindex.html           (Status: 200) [Size: 10701]\njavascript           (Status: 301) [Size: 361] [--> http://192.168.92.131/javascript/]\nrobots.txt           (Status: 200) [Size: 33]\nserver-status        (Status: 403) [Size: 319]\n===============================================================\nFinished\n===============================================================\n",
+      "stdout_truncated": false,
+      "stderr": "",
+      "stderr_truncated": false
+    },
+    {
+      "type": "analysis",
+      "text": "We found two interesting directories: `/backup/` (content is just a text label \"old site backup\" - likely a directory listing or placeholder, worth deeper enumeration for actual backup files) and `/admin/` (new, undiscovered via robots.txt, could be a login panel). Let's inspect `/admin/` directly and enumerate inside both directories for actual files (e.g., .zip, .tar, .sql, .php)."
+    },
+    {
+      "type": "tool",
+      "step": 6,
+      "tool": "fetch_page",
+      "input": {
+        "path": "/admin/",
+        "port": 80
+      },
+      "command": "GET http://192.168.92.131:80/admin/",
+      "returncode": 200,
+      "timed_out": false,
+      "started_at": "2026-10-27T10:03:57+00:00",
+      "finished_at": "2026-10-27T10:03:57+00:00",
+      "parsed": {
+        "title": "Index of /admin",
+        "comments": [],
+        "forms": [],
+        "links": [
+          "?C=N;O=D",
+          "?C=M;O=A",
+          "?C=S;O=A",
+          "?C=D;O=A",
+          "/"
+        ],
+        "scripts": [],
+        "generator": null,
+        "preview": "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"\n\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">\n<html xmlns=\"http://www.w3.org/1999/xhtml\">\n <head>\n  <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\" />\n  <title>Index of /admin</title>\n </head>\n <body>\n<h1>Index of /admin</h1>\n  <table>\n   <tr><th valign=\"top\"><img src=\"/icons/blank.gif\" alt=\"[ICO]\" /></th><th><a href=\"?C=N;O=D\">Name</a></th><th><a href=\"?C=M;O=A\">Last modified</a></th><th><a href=\"?C=S;O=A\">Size</a></th><th><a href=\"?C=D;O=A\">Description</a></th></tr>\n   <tr><th colspan=\"5\"><hr /></t...",
+        "status": 200,
+        "url": "http://192.168.92.131:80/admin/",
+        "truncated": false,
+        "headers": {
+          "Server": "Apache/2.4.69 (Debian)",
+          "Content-Type": "text/html;charset=UTF-8"
+        }
+      },
+      "stdout": "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"\n\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">\n<html xmlns=\"http://www.w3.org/1999/xhtml\">\n <head>\n  <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\" />\n  <title>Index of /admin</title>\n </head>\n <body>\n<h1>Index of /admin</h1>\n  <table>\n   <tr><th valign=\"top\"><img src=\"/icons/blank.gif\" alt=\"[ICO]\" /></th><th><a href=\"?C=N;O=D\">Name</a></th><th><a href=\"?C=M;O=A\">Last modified</a></th><th><a href=\"?C=S;O=A\">Size</a></th><th><a href=\"?C=D;O=A\">Description</a></th></tr>\n   <tr><th colspan=\"5\"><hr /></th></tr>\n<tr><td valign=\"top\"><img src=\"/icons/back.gif\" alt=\"[PARENTDIR]\" /></td><td><a href=\"/\">Parent Directory</a></td><td>&nbsp;</td><td align=\"right\">  - </td><td>&nbsp;</td></tr>\n   <tr><th colspan=\"5\"><hr /></th></tr>\n</table>\n<address>Apache/2.4.69 (Debian) Server at 192.168.92.131 Port 80</address>\n</body></html>\n",
+      "stdout_truncated": false,
+      "stderr": "",
+      "stderr_truncated": false
+    },
+    {
+      "type": "tool",
+      "step": 7,
+      "tool": "run_gobuster",
+      "input": {
+        "port": 80,
+        "path": "/backup"
+      },
+      "command": "/usr/bin/gobuster dir -u http://192.168.92.131:80/backup -w /usr/share/dirb/wordlists/common.txt -t 20",
+      "returncode": 0,
+      "timed_out": false,
+      "started_at": "2026-10-27T10:03:57+00:00",
+      "finished_at": "2026-10-27T10:03:59+00:00",
+      "parsed": {
+        "results": [
+          {
+            "path": "/.htpasswd",
+            "status": 403,
+            "size": 319
+          },
+          {
+            "path": "/.hta",
+            "status": 403,
+            "size": 319
+          },
+          {
+            "path": "/.htaccess",
+            "status": 403,
+            "size": 319
+          },
+          {
+            "path": "/index.html",
+            "status": 200,
+            "size": 16
+          }
+        ],
+        "count": 4
+      },
+      "stdout": "===============================================================\nGobuster v3.8.2\nby OJ Reeves (@TheColonial) & Christian Mehlmauer (@firefart)\n===============================================================\n[+] Url:                     http://192.168.92.131:80/backup\n[+] Method:                  GET\n[+] Threads:                 20\n[+] Wordlist:                /usr/share/dirb/wordlists/common.txt\n[+] Negative Status codes:   404\n[+] User Agent:              gobuster/3.8.2\n[+] Timeout:                 10s\n===============================================================\nStarting gobuster in directory enumeration mode\n===============================================================\n.htpasswd            (Status: 403) [Size: 319]\n.hta                 (Status: 403) [Size: 319]\n.htaccess            (Status: 403) [Size: 319]\nindex.html           (Status: 200) [Size: 16]\n===============================================================\nFinished\n===============================================================\n",
+      "stdout_truncated": false,
+      "stderr": "",
+      "stderr_truncated": false
+    },
+    {
+      "type": "tool",
+      "step": 8,
+      "tool": "run_gobuster",
+      "input": {
+        "port": 80,
+        "path": "/admin"
+      },
+      "command": "/usr/bin/gobuster dir -u http://192.168.92.131:80/admin -w /usr/share/dirb/wordlists/common.txt -t 20",
+      "returncode": 0,
+      "timed_out": false,
+      "started_at": "2026-10-27T10:03:59+00:00",
+      "finished_at": "2026-10-27T10:04:00+00:00",
+      "parsed": {
+        "results": [
+          {
+            "path": "/.htaccess",
+            "status": 403,
+            "size": 319
+          },
+          {
+            "path": "/.hta",
+            "status": 403,
+            "size": 319
+          },
+          {
+            "path": "/.htpasswd",
+            "status": 403,
+            "size": 319
+          }
+        ],
+        "count": 3
+      },
+      "stdout": "===============================================================\nGobuster v3.8.2\nby OJ Reeves (@TheColonial) & Christian Mehlmauer (@firefart)\n===============================================================\n[+] Url:                     http://192.168.92.131:80/admin\n[+] Method:                  GET\n[+] Threads:                 20\n[+] Wordlist:                /usr/share/dirb/wordlists/common.txt\n[+] Negative Status codes:   404\n[+] User Agent:              gobuster/3.8.2\n[+] Timeout:                 10s\n===============================================================\nStarting gobuster in directory enumeration mode\n===============================================================\n.htaccess            (Status: 403) [Size: 319]\n.hta                 (Status: 403) [Size: 319]\n.htpasswd            (Status: 403) [Size: 319]\n===============================================================\nFinished\n===============================================================\n",
+      "stdout_truncated": false,
+      "stderr": "",
+      "stderr_truncated": false
+    },
+    {
+      "type": "analysis",
+      "text": "The `/admin/` path is an open Apache directory listing (mod_autoindex) - meaning Apache is listing actual files there, but our preview got truncated before we could see filenames, and gobuster's common wordlist didn't match any specific real filenames (just default `.ht*` 403s). Let's generate a wordlist tuned to this stack's findings and fuzz with extensions to try to reveal the actual file(s) sitting in that listing."
+    },
+    {
+      "type": "tool",
+      "step": 9,
+      "tool": "generate_wordlist",
+      "input": {
+        "port": 80
+      },
+      "command": "generate_wordlist(port=80)",
+      "returncode": 0,
+      "timed_out": false,
+      "started_at": "2026-10-27T10:04:11+00:00",
+      "finished_at": "2026-10-27T10:04:11+00:00",
+      "parsed": {
+        "path": "/home/kali/JH/AI-Recon-Agent/wordlists/generated/192.168.92.131-80-20261027T100411Z.txt",
+        "count": 52,
+        "sources": {
+          "tech:apache": 5,
+          "found-path segments": 6,
+          "backup copies of found files": 32,
+          "generic": 9
+        }
+      },
+      "stdout": "Wrote 52 words to /home/kali/JH/AI-Recon-Agent/wordlists/generated/192.168.92.131-80-20261027T100411Z.txt\nFrom: tech:apache: 5, found-path segments: 6, backup copies of found files: 32, generic: 9\nPass this path as `wordlist` to run_ffuf or run_gobuster on port 80.",
+      "stdout_truncated": false,
+      "stderr": "",
+      "stderr_truncated": false
+    },
+    {
+      "type": "tool",
+      "step": 10,
+      "tool": "run_ffuf",
+      "input": {
+        "mode": "dir",
+        "port": 80,
+        "path": "/admin",
+        "wordlist": "/home/kali/JH/AI-Recon-Agent/wordlists/generated/192.168.92.131-80-20261027T100411Z.txt",
+        "extensions": ".php,.txt,.zip,.tar,.tar.gz,.sql,.bak"
+      },
+      "command": "n/a",
+      "returncode": null,
+      "timed_out": false,
+      "started_at": "2026-10-27T10:04:15+00:00",
+      "finished_at": "2026-10-27T10:04:15+00:00",
+      "parsed": null,
+      "stdout": "",
+      "stdout_truncated": false,
+      "stderr": "'.php,.txt,.zip,.tar,.tar.gz,.sql,.bak' is not a valid extension list. Expected something like '.php,.txt,.bak'.",
+      "stderr_truncated": false
+    },
+    {
+      "type": "tool",
+      "step": 11,
+      "tool": "run_ffuf",
+      "input": {
+        "mode": "dir",
+        "port": 80,
+        "path": "/backup",
+        "wordlist": "/home/kali/JH/AI-Recon-Agent/wordlists/generated/192.168.92.131-80-20261027T100411Z.txt",
+        "extensions": ".php,.txt,.zip,.tar,.tar.gz,.sql,.bak"
+      },
+      "command": "n/a",
+      "returncode": null,
+      "timed_out": false,
+      "started_at": "2026-10-27T10:04:15+00:00",
+      "finished_at": "2026-10-27T10:04:15+00:00",
+      "parsed": null,
+      "stdout": "",
+      "stdout_truncated": false,
+      "stderr": "'.php,.txt,.zip,.tar,.tar.gz,.sql,.bak' is not a valid extension list. Expected something like '.php,.txt,.bak'.",
+      "stderr_truncated": false
+    },
+    {
+      "type": "analysis",
+      "text": "Extension list was rejected (likely the multi-dot `.tar.gz` entry broke the parser). Let me retry with a valid, simpler extension set."
+    },
+    {
+      "type": "tool",
+      "step": 12,
+      "tool": "run_ffuf",
+      "input": {
+        "mode": "dir",
+        "port": 80,
+        "path": "/admin",
+        "wordlist": "/home/kali/JH/AI-Recon-Agent/wordlists/generated/192.168.92.131-80-20261027T100411Z.txt",
+        "extensions": ".php,.txt,.zip,.sql,.bak"
+      },
+      "command": "/usr/bin/ffuf -w /home/kali/JH/AI-Recon-Agent/wordlists/generated/192.168.92.131-80-20261027T100411Z.txt:FUZZ -u http://192.168.92.131:80/admin/FUZZ -mc 200,204,301,302,307,401,403,405 -t 40 -noninteractive -of json -o /tmp/tmpgj7ea16w/ffuf.json -e .php,.txt,.zip,.sql,.bak -maxtime 240",
+      "returncode": 0,
+      "timed_out": false,
+      "started_at": "2026-10-27T10:04:20+00:00",
+      "finished_at": "2026-10-27T10:04:25+00:00",
+      "parsed": {
+        "results": [
+          {
+            "input": ".htpasswd.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.bak.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.bak.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.old",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.old",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.bak.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.bak.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.bak.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.bak.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.old.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.old.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.bak.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.bak.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.bak.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.bak.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.old.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.old.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.orig.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.orig.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.old.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.old.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.orig.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.orig.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.orig",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.orig",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.orig.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.orig.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta~.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta~.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.old.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.old.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.orig.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.orig.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta~",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta~",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta~.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta~.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta~.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta~.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta~.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta~.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.orig.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.orig.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.old.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.old.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.save.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.save.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta~.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta~.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.save.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.save.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.save.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.save.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.save.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.save.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.save.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.save.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.save",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.save",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.swp.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.swp.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.swp.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.swp.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.swp.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.swp.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.swp",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.swp",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.bak.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.bak.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.bak.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.bak.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.bak.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.bak.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.bak.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.bak.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.swp.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.swp.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.bak.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.bak.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.old.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.old.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.old.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.old.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.old",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.old",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.old.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.old.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.old.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.old.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.orig.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.orig.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.orig.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.orig.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.old.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.old.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.orig.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.orig.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.swp.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.swp.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess~",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess~",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.orig.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.orig.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess~.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess~.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess~.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess~.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.orig.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.orig.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess~.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess~.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess~.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess~.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.save.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.save.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.orig",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.orig",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.save.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.save.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.save.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.save.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.save.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.save.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess~.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess~.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.save",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.save",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.save.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.save.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.bak.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.bak.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.swp.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.swp.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.swp",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.swp",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.bak.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.bak.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.swp.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.swp.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.swp.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.swp.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.bak.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.bak.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.swp.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.swp.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.swp.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.swp.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.bak.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.bak.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.bak.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.bak.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.old.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.old.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.old.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.old.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.old.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.old.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.old.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.old.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.old",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.old",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.orig.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.orig.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.old.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.old.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.orig.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.orig.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.orig.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.orig.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.orig.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.orig.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.orig",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.orig",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.orig.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.orig.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd~.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd~.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd~.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd~.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd~",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd~",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd~.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd~.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.save",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.save",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.save.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.save.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.save.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.save.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd~.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd~.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd~.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd~.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.save.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.save.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.save.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.save.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.swp",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.swp",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.swp.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.swp.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.swp.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.swp.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.swp.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.swp.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.swp.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.swp.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.save.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.save.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.swp.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.swp.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htpasswd.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.hta.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/admin/.htaccess.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          }
+        ],
+        "count": 126,
+        "mode": "dir"
+      },
+      "stdout": "\n\u001b[2K.htpasswd.bak           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htpasswd.sql           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htaccess               [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.hta.bak.php            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.bak                [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.old                [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.bak.sql            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.bak.txt            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.old.zip            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.bak.zip            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.bak.bak            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.old.php            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.orig.php           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.old.txt            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.orig.sql           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.orig               [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.orig.bak           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta~.php               [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.old.bak            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.orig.zip           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.orig.txt           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta~.sql               [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta~.zip               [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta~.txt               [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta~                   [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.old.sql            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.hta.save.php           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.save.sql           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta~.bak               [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.save.txt           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.save.bak           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.save               [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.save.zip           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.swp.php            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.swp.zip            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.swp.txt            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.swp                [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.bak           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.bak.php       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.bak.txt       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.bak.sql       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.bak.zip       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.swp.bak            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.bak.bak       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.old.php       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.old.txt       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.old           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.old.zip       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.old.sql       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.orig.txt      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.old.bak       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.orig.php      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.orig.sql      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.swp.sql            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htaccess~              [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.orig.zip      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess~.txt          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess~.zip          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.orig.bak      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess~.php          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess~.sql          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.save.php      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.orig          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htaccess.save.sql      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.save.zip      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.save.txt      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess~.bak          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.save          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.save.bak      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.bak.php       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.bak.txt       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.swp.zip       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.swp.txt       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.swp           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.swp.php       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.bak           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.swp.bak       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.swp.sql       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.bak.zip       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.bak.sql       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.bak.bak       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.old.sql       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.old.bak       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.old.txt       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.old.zip       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.old           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.orig.txt      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.old.php       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.orig.zip      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.orig.php      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.orig.bak      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.orig          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.orig.sql      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd~.txt          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd~.sql          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd~              [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd~.zip          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.save          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.save.sql      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.save.txt      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd~.bak          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd~.php          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.save.bak      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.save.zip      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.swp           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.swp.txt       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.swp.sql       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.swp.php       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.swp.zip       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.save.php      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.swp.bak       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.php                [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 996ms]\u001b[0m\n\n\u001b[2K.htpasswd               [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1967ms]\u001b[0m\n\n\u001b[2K.htpasswd.zip           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1968ms]\u001b[0m\n\n\u001b[2K.hta.txt                [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2973ms]\u001b[0m\n\n\u001b[2K.hta                    [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2974ms]\u001b[0m\n\n\u001b[2K.htpasswd.txt           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2975ms]\u001b[0m\n\n\u001b[2K.htaccess.bak           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 3969ms]\u001b[0m\n\n\u001b[2K.htpasswd.php           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 4353ms]\u001b[0m\n\n\u001b[2K.hta.sql                [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 4362ms]\u001b[0m\n\n\u001b[2K.hta.bak                [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 4365ms]\u001b[0m\n\n\u001b[2K.htaccess.txt           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 4983ms]\u001b[0m\n\n\u001b[2K.htaccess.zip           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 4995ms]\u001b[0m\n\n\u001b[2K.hta.zip                [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 5009ms]\u001b[0m\n\n\u001b[2K.htaccess.sql           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 5011ms]\u001b[0m\n\n\u001b[2K.htaccess.php           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 5020ms]\u001b[0m\n",
+      "stdout_truncated": false,
+      "stderr": "[0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [156/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [156/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [159/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [160/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [161/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [162/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [162/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [164/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [165/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [166/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [167/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [168/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [169/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [170/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [171/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [172/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [173/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [174/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [174/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [175/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [177/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [178/312] :: Job [1/1] ::",
+      "stderr_truncated": true
+    },
+    {
+      "type": "tool",
+      "step": 13,
+      "tool": "run_ffuf",
+      "input": {
+        "mode": "dir",
+        "port": 80,
+        "path": "/backup",
+        "wordlist": "/home/kali/JH/AI-Recon-Agent/wordlists/generated/192.168.92.131-80-20261027T100411Z.txt",
+        "extensions": ".php,.txt,.zip,.sql,.bak"
+      },
+      "command": "/usr/bin/ffuf -w /home/kali/JH/AI-Recon-Agent/wordlists/generated/192.168.92.131-80-20261027T100411Z.txt:FUZZ -u http://192.168.92.131:80/backup/FUZZ -mc 200,204,301,302,307,401,403,405 -t 40 -noninteractive -of json -o /tmp/tmpql7twx71/ffuf.json -e .php,.txt,.zip,.sql,.bak -maxtime 240",
+      "returncode": 0,
+      "timed_out": false,
+      "started_at": "2026-10-27T10:04:25+00:00",
+      "finished_at": "2026-10-27T10:04:25+00:00",
+      "parsed": {
+        "results": [
+          {
+            "input": ".htaccess.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": "index.html",
+            "status": 200,
+            "length": 16,
+            "words": 3,
+            "lines": 2,
+            "url": "http://192.168.92.131:80/backup/index.html",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html"
+          },
+          {
+            "input": ".hta.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.bak.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.bak.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.bak.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.bak.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.old.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.old.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.old.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.old.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.bak.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.bak.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta~.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta~.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.orig",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.orig",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.save.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.save.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.save",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.save",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta~.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta~.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.orig.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.orig.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.old",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.old",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta~.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta~.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.old.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.old.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.swp",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.swp",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.bak.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.bak.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.save.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.save.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.bak.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.bak.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.save.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.save.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.orig.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.orig.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.swp.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.swp.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta~.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta~.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta~",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta~",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.save.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.save.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.swp.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.swp.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.swp.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.swp.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.old.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.old.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.bak.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.bak.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.old.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.old.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.bak.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.bak.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.bak.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.bak.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.swp.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.swp.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.bak.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.bak.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.old.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.old.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.old.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.old.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.old.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.old.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.orig.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.orig.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.orig",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.orig",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.save.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.save.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess~.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess~.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess~.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess~.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.save.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.save.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.orig.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.orig.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.orig.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.orig.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta~.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta~.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.bak.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.bak.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.orig.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.orig.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.save.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.save.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess~.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess~.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.save.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.save.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.orig.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.orig.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.orig.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.orig.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess~.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess~.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.orig.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.orig.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.save.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.save.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.bak.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.bak.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.save",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.save",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.save.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.save.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.bak.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.bak.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.swp.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.swp.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.orig.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.orig.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.old",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.old",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.swp.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.swp.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess~",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess~",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.swp.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.swp.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.old.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.old.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.orig.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.orig.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.old.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.old.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess~.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess~.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.swp.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.swp.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.swp",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.swp",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.old.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.old.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd~",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd~",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.orig.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.orig.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.orig.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.orig.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.save.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.save.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.swp.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.swp.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.orig.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.orig.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.old",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.old",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.old.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.old.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd~.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd~.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htaccess.swp.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htaccess.swp.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd~.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd~.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.bak.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.bak.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.orig",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.orig",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.swp.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.swp.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.bak.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.bak.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.swp",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.swp",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd~.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd~.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.old.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.old.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.swp.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.swp.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.swp.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.swp.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd~.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd~.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.swp.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.swp.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.old.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.old.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd~.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd~.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.save.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.save.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.save.php",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.save.php",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.orig.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.orig.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.old.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.old.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.save",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.save",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.swp.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.swp.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.bak.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.bak.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.save.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.save.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.zip",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.zip",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".htpasswd.save.sql",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.htpasswd.save.sql",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.bak",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.bak",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          },
+          {
+            "input": ".hta.txt",
+            "status": 403,
+            "length": 319,
+            "words": 21,
+            "lines": 10,
+            "url": "http://192.168.92.131:80/backup/.hta.txt",
+            "host": "192.168.92.131:80",
+            "content_type": "text/html; charset=iso-8859-1"
+          }
+        ],
+        "count": 127,
+        "mode": "dir"
+      },
+      "stdout": "\n\u001b[2K.htaccess.php           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htpasswd.txt           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htaccess.bak           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htpasswd.bak           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2ms]\u001b[0m\n\n\u001b[2K.htaccess               [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2ms]\u001b[0m\n\n\u001b[2K.htaccess.zip           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2ms]\u001b[0m\n\n\u001b[2K.htpasswd.zip           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 3ms]\u001b[0m\n\n\u001b[2K.htpasswd.sql           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 3ms]\u001b[0m\n\n\u001b[2K.htaccess.txt           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 3ms]\u001b[0m\n\n\u001b[2K.htaccess.sql           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 3ms]\u001b[0m\n\n\u001b[2K.hta.sql                [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 4ms]\u001b[0m\n\n\u001b[2Kindex.html              [Status: 200, Size: 16, Words: 3, Lines: 2, Duration: 2ms]\u001b[0m\n\n\u001b[2K.hta.php                [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 5ms]\u001b[0m\n\n\u001b[2K.hta                    [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 6ms]\u001b[0m\n\n\u001b[2K.hta.bak.txt            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2ms]\u001b[0m\n\n\u001b[2K.hta.bak.sql            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2ms]\u001b[0m\n\n\u001b[2K.hta.old.txt            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.hta.old.sql            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.hta.bak.bak            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2ms]\u001b[0m\n\n\u001b[2K.hta~.php               [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.orig               [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.hta.save.zip           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.save               [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta~.txt               [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.orig.sql           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.hta.old                [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 3ms]\u001b[0m\n\n\u001b[2K.hta.old.zip            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2ms]\u001b[0m\n\n\u001b[2K.hta.swp                [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta~.sql               [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htaccess.bak.sql       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.save.sql           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htaccess.bak.php       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.save.php           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htaccess.bak           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.hta.orig.zip           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2ms]\u001b[0m\n\n\u001b[2K.hta.swp.php            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.hta~.bak               [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2ms]\u001b[0m\n\n\u001b[2K.hta~                   [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2ms]\u001b[0m\n\n\u001b[2K.hta.save.txt           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2ms]\u001b[0m\n\n\u001b[2K.hta.swp.txt            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.hta.swp.sql            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.hta.old.bak            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 3ms]\u001b[0m\n\n\u001b[2K.hta.bak.zip            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 5ms]\u001b[0m\n\n\u001b[2K.htaccess.old.sql       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.bak.txt       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htaccess.bak.bak       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.hta.swp.zip            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2ms]\u001b[0m\n\n\u001b[2K.htaccess.bak.zip       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htaccess.old.txt       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htaccess.old.php       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htaccess.old.zip       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.hta.orig.bak           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 4ms]\u001b[0m\n\n\u001b[2K.htaccess.orig          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htaccess.save.php      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htaccess~.php          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htaccess~.txt          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htaccess.save.zip      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htaccess.orig.bak      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2ms]\u001b[0m\n\n\u001b[2K.htaccess.orig.zip      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2ms]\u001b[0m\n\n\u001b[2K.hta~.zip               [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 5ms]\u001b[0m\n\n\u001b[2K.hta.bak.php            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 8ms]\u001b[0m\n\n\u001b[2K.htaccess.orig.txt      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2ms]\u001b[0m\n\n\u001b[2K.htaccess.save.txt      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2ms]\u001b[0m\n\n\u001b[2K.htaccess~.bak          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2ms]\u001b[0m\n\n\u001b[2K.hta.save.bak           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 4ms]\u001b[0m\n\n\u001b[2K.hta.orig.txt           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 5ms]\u001b[0m\n\n\u001b[2K.hta.bak                [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 8ms]\u001b[0m\n\n\u001b[2K.hta.orig.php           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 6ms]\u001b[0m\n\n\u001b[2K.htaccess.orig.sql      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2ms]\u001b[0m\n\n\u001b[2K.htaccess~.sql          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2ms]\u001b[0m\n\n\u001b[2K.htaccess.save.bak      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htpasswd.bak.sql       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.save          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2ms]\u001b[0m\n\n\u001b[2K.hta.swp.bak            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 4ms]\u001b[0m\n\n\u001b[2K.htpasswd.old           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.swp.txt       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess~              [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2ms]\u001b[0m\n\n\u001b[2K.htaccess.save.sql      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2ms]\u001b[0m\n\n\u001b[2K.htaccess.orig.php      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 3ms]\u001b[0m\n\n\u001b[2K.htpasswd.bak.bak       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.swp.zip       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.old.php       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.orig.txt      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.old.txt       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess~.zip          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2ms]\u001b[0m\n\n\u001b[2K.htaccess.swp.bak       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.swp           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.hta.old.php            [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 7ms]\u001b[0m\n\n\u001b[2K.htpasswd~              [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.orig.sql      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.orig.bak      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.save.zip      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.php           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 12ms]\u001b[0m\n\n\u001b[2K.htaccess.swp.sql       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.orig.php      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htaccess.old           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 4ms]\u001b[0m\n\n\u001b[2K.htaccess.old.bak       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 3ms]\u001b[0m\n\n\u001b[2K.htpasswd~.sql          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htaccess.swp.php       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htpasswd~.txt          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.bak.txt       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.orig          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htpasswd.swp.txt       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.bak.php       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.swp           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd~.zip          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.old.bak       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htpasswd.swp.sql       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd.swp.zip       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 0ms]\u001b[0m\n\n\u001b[2K.htpasswd~.bak          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htpasswd.swp.php       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htpasswd.old.sql       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2ms]\u001b[0m\n\n\u001b[2K.htpasswd~.php          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2ms]\u001b[0m\n\n\u001b[2K.htpasswd.save.txt      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 2ms]\u001b[0m\n\n\u001b[2K.htpasswd.save.php      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 1ms]\u001b[0m\n\n\u001b[2K.htpasswd.orig.zip      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 3ms]\u001b[0m\n\n\u001b[2K.htpasswd.old.zip       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 3ms]\u001b[0m\n\n\u001b[2K.htpasswd.save          [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 3ms]\u001b[0m\n\n\u001b[2K.htpasswd.bak           [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 3ms]\u001b[0m\n\n\u001b[2K.htpasswd.swp.bak       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 3ms]\u001b[0m\n\n\u001b[2K.htpasswd.bak.zip       [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 4ms]\u001b[0m\n\n\u001b[2K.htpasswd.save.bak      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 4ms]\u001b[0m\n\n\u001b[2K.htpasswd               [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 30ms]\u001b[0m\n\n\u001b[2K.hta.zip                [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 30ms]\u001b[0m\n\n\u001b[2K.htpasswd.save.sql      [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 15ms]\u001b[0m\n\n\u001b[2K.hta.bak                [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 30ms]\u001b[0m\n\n\u001b[2K.hta.txt                [Status: 403, Size: 319, Words: 21, Lines: 10, Duration: 30ms]\u001b[0m\n",
+      "stdout_truncated": false,
+      "stderr": "/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [171/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [172/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [172/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [172/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [175/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [176/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [177/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [178/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [179/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [180/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [181/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [182/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [183/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [184/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [185/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [185/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [187/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [161/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [189/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [190/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [191/312] :: Job [1/1] :: 0 req/sec :: Duration: [0:00:00] :: Errors: 0 ::\n\u001b[2K:: Progress: [194/31",
+      "stderr_truncated": true
+    },
+    {
+      "type": "analysis",
+      "text": "The `/admin/index.html` (16 bytes) is suspiciously tiny and inconsistent with the normal Debian default page - let's fetch it directly to see what's actually there, since the first `/admin/` request showed an Apache directory listing (meaning autoindex is active, which is unusual if an index.html exists)."
+    },
+    {
+      "type": "tool",
+      "step": 14,
+      "tool": "fetch_page",
+      "input": {
+        "path": "/admin/index.html",
+        "port": 80
+      },
+      "command": "GET http://192.168.92.131:80/admin/index.html",
+      "returncode": 404,
+      "timed_out": false,
+      "started_at": "2026-10-27T10:04:38+00:00",
+      "finished_at": "2026-10-27T10:04:38+00:00",
+      "parsed": {
+        "title": "404 Not Found",
+        "comments": [],
+        "forms": [],
+        "links": [],
+        "scripts": [],
+        "generator": null,
+        "preview": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\">\n<html><head>\n<title>404 Not Found</title>\n</head><body>\n<h1>Not Found</h1>\n<p>The requested URL was not found on this server.</p>\n<hr>\n<address>Apache/2.4.69 (Debian) Server at 192.168.92.131 Port 80</address>\n</body></html>",
+        "status": 404,
+        "url": "http://192.168.92.131:80/admin/index.html",
+        "truncated": false,
+        "headers": {
+          "Server": "Apache/2.4.69 (Debian)",
+          "Content-Type": "text/html; charset=iso-8859-1"
+        }
+      },
+      "stdout": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\">\n<html><head>\n<title>404 Not Found</title>\n</head><body>\n<h1>Not Found</h1>\n<p>The requested URL was not found on this server.</p>\n<hr>\n<address>Apache/2.4.69 (Debian) Server at 192.168.92.131 Port 80</address>\n</body></html>\n",
+      "stdout_truncated": false,
+      "stderr": "",
+      "stderr_truncated": false
+    },
+    {
+      "type": "tool",
+      "step": 15,
+      "tool": "fetch_page",
+      "input": {
+        "path": "/backup/index.html",
+        "port": 80
+      },
+      "command": "GET http://192.168.92.131:80/backup/index.html",
+      "returncode": 200,
+      "timed_out": false,
+      "started_at": "2026-10-27T10:04:38+00:00",
+      "finished_at": "2026-10-27T10:04:38+00:00",
+      "parsed": {
+        "title": null,
+        "comments": [],
+        "forms": [],
+        "links": [],
+        "scripts": [],
+        "generator": null,
+        "preview": "old site backup",
+        "status": 200,
+        "url": "http://192.168.92.131:80/backup/index.html",
+        "truncated": false,
+        "headers": {
+          "Server": "Apache/2.4.69 (Debian)",
+          "Content-Type": "text/html"
+        }
+      },
+      "stdout": "old site backup\n",
+      "stdout_truncated": false,
+      "stderr": "",
+      "stderr_truncated": false
+    },
+    {
+      "type": "analysis",
+      "text": "We've now got a clear picture. Key insight: the `/admin/` directory returned an Apache autoindex (directory listing) page, but its actual link list only contained the standard sort-column headers and the parent directory link - no real files are listed. That tells us the directory is either genuinely empty right now or contains only dotfiles that Apache's default `IndexIgnore` hides from the listing (and Apache's hardcoded 403 on `.ht*` patterns fires regardless of whether such files actually exist - a classic false-positive trap when fuzzing extensions). `/backup/index.html` is real and returns a 16-byte placeholder page (\"old site backup\"), not an actual backup archive - the “backup” is cosmetic/content, not a leftover file. This is a good lesson in verifying with `fetch_page` rather than assuming directory names or robots.txt entries mean live artifacts.\n\nLet me close out the session with the structured report."
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+2026-10-27T11:43:39+0000 co1508kali2 systemd[1]: Starting ssh.service - OpenBSD Secure Shell server...
+2026-10-27T11:43:39+0000 co1508kali2 sshd[1036]: Server listening on 0.0.0.0 port 22.
+2026-10-27T11:43:39+0000 co1508kali2 sshd[1036]: Server listening on :: port 22.
+2026-10-27T11:43:39+0000 co1508kali2 systemd[1]: Started ssh.service - OpenBSD Secure Shell server.
+2026-10-27T10:03:25+0000 co1508kali2 sshd[21609]: OpenSSL version mismatch. Built against 30000090, you have 30600050
+2026-10-27T10:03:31+0000 co1508kali2 sshd[21658]: OpenSSL version mismatch. Built against 30000090, you have 30600050
+2026-10-27T10:03:31+0000 co1508kali2 sshd[21659]: OpenSSL version mismatch. Built against 30000090, you have 30600050
+2026-10-27T10:03:31+0000 co1508kali2 sshd[21660]: OpenSSL version mismatch. Built against 30000090, you have 30600050
+2026-10-27T10:03:36+0000 co1508kali2 sshd[21702]: OpenSSL version mismatch. Built against 30000090, you have 30600050

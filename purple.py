@@ -68,6 +68,8 @@ MAX_EVIDENCE_LINES = 300
 MAX_LINE_CHARS = 300
 # A quote shorter than this matches too easily to prove anything ("GET /").
 MIN_QUOTE_CHARS = 12
+# Recon's own summary, as context for the analysis.
+MAX_CONCLUSIONS_CHARS = 4000
 
 ACCEPTED_SCHEMA_VERSIONS = (1, 2)
 
@@ -122,8 +124,20 @@ def recon_steps(recon: dict) -> list:
             "started_at": ev.get("started_at"),
             "finished_at": ev.get("finished_at"),
             "timed_out": bool(ev.get("timed_out")),
+            "sent": _was_sent(ev),
         })
     return steps
+
+
+def _was_sent(ev: dict) -> bool:
+    """
+    False for a call refused before it ran: no command was built and no
+    process returned. On the 2026-10-27 run two ffuf calls were refused over
+    their extension list, and purple counted them as blind spots, as if a
+    defender had missed traffic that was never sent.
+    """
+    command = str(ev.get("command") or "").strip()
+    return not (command in ("", "n/a") and ev.get("returncode") is None)
 
 
 def _hunt_texts(hunt: dict) -> list:
@@ -148,22 +162,165 @@ def hunt_corpus(hunt: dict) -> str:
     return _norm("\n".join(_hunt_texts(hunt)))
 
 
-def evidence_lines(hunt: dict, attacker_ip: str = "") -> list:
+# How many lines each recon step may claim before the rest of the space is
+# shared out across the timeline.
+PER_STEP_LINES = 6
+_URL_PATH = re.compile(r"https?://[^/\s]+(/[^\s]*)")
+
+
+def step_signatures(step: dict) -> list:
     """
-    Log lines for the prompt. With an attacker IP, only the lines that name it;
-    without one, every line, capped. The cap is stated in the prompt so the
-    model knows the list may be incomplete.
+    What a recon step's traffic looks like in a log line: groups of strings
+    that must all appear. Only network-facing tools have one. A user agent is
+    the strongest mark; a path narrows it to one request or one directory.
+    """
+    tool, command = step.get("tool"), step.get("command") or ""
+    m = _URL_PATH.search(command)
+    path = m.group(1) if m else ""
+    base = path.rsplit("/FUZZ", 1)[0].rstrip("/") if path else ""
+    if tool == "fetch_page" and path:
+        return [["ai-recon-agent", f" {path} HTTP"], [f" {path} HTTP"]]
+    if tool == "run_whatweb":
+        return [["WhatWeb"]]
+    if tool == "run_gobuster":
+        return [["gobuster", f" {base}/"]] if base else [["gobuster"]]
+    if tool == "run_ffuf":
+        return [["Fuzz Faster U Fool", f" {base}/"], ["Fuzz Faster U Fool"]] if base \
+            else [["Fuzz Faster U Fool"]]
+    if tool == "run_nmap":
+        return [["Nmap Scripting Engine"], ["FW-SYN"], ["sshd"]]
+    return []
+
+
+def step_candidates(step: dict, hunt: dict, attacker_ip: str = "") -> list:
+    """
+    Lines in the hunt record carrying a step's strongest signature (the first
+    group from step_signatures), spread across its burst, at most
+    PER_STEP_LINES. These go to the model beside the step, and are what
+    find_contradictions checks the answer against.
+    """
+    sigs = step_signatures(step)
+    if not sigs:
+        return []
+    group, hits, seen = sigs[0], [], set()
+    for text in _hunt_texts(hunt):
+        for line in text.splitlines():
+            line = line.strip()[:MAX_LINE_CHARS]
+            if (not line or (attacker_ip and attacker_ip not in line)
+                    or not all(t in line for t in group)):
+                continue
+            key = _norm(line)
+            if key not in seen:
+                seen.add(key)
+                hits.append(line)
+    return [hits[i] for i in _spread(list(range(len(hits))), PER_STEP_LINES)]
+
+
+def find_contradictions(payload: dict, candidates: dict) -> list:
+    """
+    Steps whose answer disagrees with lines the hunt record holds for them:
+
+      - marked not seen, while lines carrying the step's own signature are in
+        the record;
+      - a fetch_page marked seen, quoting a line that is not one of its own
+        (a page fetch is one request, so the right line is the one with its
+        path and the agent's user agent).
+
+    The 2026-10-27 analysis had the agent's own lines for /backup/ and
+    /admin/index.html in front of it and called both blind spots, and matched
+    the robots.txt fetch to the student's manual curl from eight minutes
+    earlier. This is the same check-the-record rule the quote check applies,
+    for the opposite mistake.
     """
     out = []
+    for a in (payload or {}).get("steps") or []:
+        if not isinstance(a, dict):
+            continue
+        sid, lines = a.get("step"), candidates.get(a.get("step")) or []
+        if not lines:
+            continue
+        if a.get("seen_in_logs") is False:
+            out.append(sid)
+        elif a.get("seen_in_logs") is True and a.get("_tool") == "fetch_page":
+            quote = _norm(str(a.get("evidence") or ""))
+            if not any(_norm(x) in quote or quote in _norm(x) for x in lines):
+                out.append(sid)
+    return out
+
+
+def review_message(unverified: list, contradicted: list, candidates: dict) -> str:
+    parts = ["finish_purple was NOT accepted."]
+    if unverified:
+        parts.append(
+            "Steps " + ", ".join(str(s) for s in unverified) + " are marked seen_in_logs, "
+            "but their evidence does not appear in the hunt report. Quote the log line "
+            "exactly as it appears in the evidence you were given, one line per line of "
+            "the quote. If no line shows the step, mark it seen_in_logs false.")
+    for sid in contradicted:
+        parts.append(
+            f"Step {sid}: the hunt record holds lines carrying this step's own signature, "
+            "which your answer did not use. Look at them and decide again; if one is this "
+            "step, quote it. Its candidate lines: "
+            + " | ".join(candidates.get(sid) or []))
+    parts.append("Call finish_purple again with every step. This is returned once; "
+                 "next time the answer is kept as it stands.")
+    return " ".join(parts)
+
+
+def _spread(indices: list, n: int) -> list:
+    """n indices spread evenly from first to last, so a burst is shown whole."""
+    if len(indices) <= n:
+        return list(indices)
+    if n == 1:
+        return [indices[0]]
+    return [indices[round(i * (len(indices) - 1) / (n - 1))] for i in range(n)]
+
+
+def evidence_lines(hunt: dict, attacker_ip: str = "", steps: list | None = None) -> list:
+    """
+    Log lines for the prompt, at most MAX_EVIDENCE_LINES.
+
+    Until v1.0.3 this was the first 300 lines naming the attacker IP, in the
+    order the hunt happened to read them. On the 2026-10-27 run 238 of those
+    300 were firewall SYN lines from the port scan. The hunt record held seven
+    lines carrying the recon agent's own user agent, one of each fetch it made,
+    and six of them never reached the model, which then reported three of
+    those fetches as blind spots and matched a fourth to the student's manual
+    curl from eight minutes earlier.
+
+    Now each recon step first claims up to PER_STEP_LINES lines carrying its
+    signature (step_signatures), spread across its burst, and the rest of the
+    space is shared evenly across the remaining lines. Duplicates are dropped,
+    and the result keeps the hunt's order. The cap is stated in the prompt.
+    """
+    pool, seen = [], set()
     for text in _hunt_texts(hunt):
         for line in text.splitlines():
             line = line.strip()
             if not line or (attacker_ip and attacker_ip not in line):
                 continue
-            out.append(line[:MAX_LINE_CHARS])
-            if len(out) >= MAX_EVIDENCE_LINES:
-                return out
-    return out
+            line = line[:MAX_LINE_CHARS]
+            key = _norm(line)
+            if key not in seen:
+                seen.add(key)
+                pool.append(line)
+
+    chosen = set()
+    for step in steps or []:
+        for group in step_signatures(step):
+            hits = [i for i, x in enumerate(pool) if all(t in x for t in group)
+                    and i not in chosen]
+            if hits:
+                chosen.update(_spread(hits, PER_STEP_LINES))
+                break
+        if len(chosen) >= MAX_EVIDENCE_LINES:
+            break
+
+    room = MAX_EVIDENCE_LINES - len(chosen)
+    if room > 0:
+        rest = [i for i in range(len(pool)) if i not in chosen]
+        chosen.update(_spread(rest, room))
+    return [pool[i] for i in sorted(chosen)[:MAX_EVIDENCE_LINES]]
 
 
 # --------------------------------------------------------------------------- #
@@ -301,19 +458,6 @@ def prose_only(payload: dict) -> dict:
     return out
 
 
-def unverified_message(steps: list) -> str:
-    return (
-        "finish_purple was NOT accepted. Steps "
-        + ", ".join(str(s) for s in steps)
-        + " are marked seen_in_logs, but their evidence does not appear in the "
-        "hunt report. Quote the log line exactly as it appears in the evidence "
-        "you were given, one line per line of the quote. If no line shows the "
-        "step, mark it seen_in_logs false. Call finish_purple again with every "
-        "step. This is returned once; next time unverified quotes are kept and "
-        "reported as unproven."
-    )
-
-
 # --------------------------------------------------------------------------- #
 # the prompt
 # --------------------------------------------------------------------------- #
@@ -337,6 +481,15 @@ given:
 Then `detection_ideas`, the improvements that would close the biggest gaps. \
 Last, `narrative`: a short story of the engagement from both sides, in order, \
 for a student, under 300 words. The step detail lives in `steps`, not here.
+
+Each recon step may carry `candidate_lines`: lines from the hunt record that \
+carry that step's own signature (its tool's user agent, its path). Check them \
+first. A page fetch is one request: match it to the line with its own path \
+and the agent's user agent, not to another request for the same path. Steps \
+that were refused before sending anything are not listed at all.
+
+`conclusions` is what the recon session itself concluded. Use it when judging \
+what a finding means: a path recon found empty is not an exposure.
 
 Be careful with time. The recon times are UTC from the attacking machine; log \
 timestamps come from the target's clock and timezone, which may differ. Use \
@@ -422,11 +575,16 @@ FINISH_STEPS_TOOL = {
 
 def build_prompt(recon: dict, hunt: dict, steps: list, lines: list, attacker_ip: str) -> str:
     hunt_summary = hunt.get("summary") if isinstance(hunt.get("summary"), dict) else {}
+    summary = recon.get("summary") if isinstance(recon.get("summary"), dict) else {}
     recon_view = {
         "target": recon.get("target"),
         "started": recon.get("started"),
         "ended": recon.get("ended"),
-        "steps": steps,
+        # What recon concluded, so the analysis does not call a path
+        # "the most actionable finding" when recon already found it empty,
+        # as the 2026-10-27 analysis did with /admin/ and /backup/.
+        "conclusions": str(summary.get("summary") or "")[:MAX_CONCLUSIONS_CHARS],
+        "steps": [{k: v for k, v in st.items() if k != "sent"} for st in steps],
     }
     hunt_view = {
         "workspace": hunt.get("workspace"),
@@ -471,13 +629,24 @@ def main():
         print(console.bad(str(e)))
         sys.exit(EXIT_ERROR)
 
-    steps = recon_steps(recon)
+    all_steps = recon_steps(recon)
+    # A call refused before it ran sent nothing, so it cannot be a blind spot.
+    # It is listed in the report as never run and not put to the model.
+    steps = [st for st in all_steps if st["sent"]]
+    not_run = [st for st in all_steps if not st["sent"]]
     if not steps:
         print(console.bad("the recon report has no tool calls to analyse"))
         sys.exit(EXIT_ERROR)
     step_ids = [s["step"] for s in steps]
     corpus = hunt_corpus(hunt)
-    lines = evidence_lines(hunt, args.attacker_ip.strip())
+    lines = evidence_lines(hunt, args.attacker_ip.strip(), steps)
+    candidates = {}
+    for st in steps:
+        found = step_candidates(st, hunt, args.attacker_ip.strip())
+        if found:
+            candidates[st["step"]] = found
+            st["candidate_lines"] = found
+    tools_by_step = {st["step"]: st["tool"] for st in steps}
 
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
@@ -487,12 +656,14 @@ def main():
     client = anthropic.Anthropic(api_key=api_key)
     telemetry = Telemetry(MODEL)
     report = PurpleReport(args.recon, args.hunt, recon.get("target"), hunt.get("workspace"))
+    report.log_not_run(not_run)
     if recon.get("schema_version", 1) < 2:
         report.note("The recon report predates per-step timestamps (schema 1), "
                     "so steps are matched on content alone.")
 
-    print(console.agent("purple", f"v{__version__} - {len(steps)} recon steps, "
-                                  f"{len(lines)} evidence lines. Analysing..."))
+    print(console.agent("purple", f"v{__version__} - {len(steps)} recon steps"
+                                  + (f" ({len(not_run)} more never ran)" if not_run else "")
+                                  + f", {len(lines)} evidence lines. Analysing..."))
     messages = [{"role": "user",
                  "content": build_prompt(recon, hunt, steps, lines, args.attacker_ip)}]
 
@@ -550,15 +721,25 @@ def main():
                 "type": "tool_result", "tool_use_id": block.id, "is_error": True,
                 "content": content}]})
             continue
-        if unverified and not returned_unverified:
+        tagged = {**payload, "steps": [{**a, "_tool": tools_by_step.get(a.get("step"))}
+                                        for a in payload.get("steps") or []
+                                        if isinstance(a, dict)]}
+        contradicted = find_contradictions(tagged, candidates)
+        if (unverified or contradicted) and not returned_unverified:
             returned_unverified = True
-            print(console.warn(f"evidence for step(s) {unverified} is not in the hunt "
-                               f"record; asking again."))
-            report.log_unverified_return(unverified)
+            if unverified:
+                print(console.warn(f"evidence for step(s) {unverified} is not in the hunt "
+                                   f"record; asking again."))
+                report.log_unverified_return(unverified)
+            if contradicted:
+                print(console.warn(f"step(s) {contradicted} disagree with lines the hunt "
+                                   f"record holds for them; asking again."))
+                report.log_contradicted_return(contradicted)
             messages.append({"role": "user", "content": [{
                 "type": "tool_result", "tool_use_id": block.id, "is_error": True,
-                "content": unverified_message(unverified)}]})
+                "content": review_message(unverified, contradicted, candidates)}]})
             continue
+        report.log_contradicted(contradicted)
         accepted = prose_only(payload)
         break
 
@@ -580,7 +761,9 @@ def main():
     seen = sum(1 for a in accepted["steps"] if a.get("seen_in_logs"))
     blind = len(steps) - seen
     print(console.agent("purple", f"{seen} of {len(steps)} steps left a trace in the logs; "
-                                  f"{blind} {'was a blind spot' if blind == 1 else 'were blind spots'}."))
+                                  f"{blind} {'was a blind spot' if blind == 1 else 'were blind spots'}."
+                                  + (f" {len(not_run)} refused before sending, not counted."
+                                     if not_run else "")))
     if unverified:
         print(console.warn(f"step(s) {unverified} cite evidence not found in the hunt "
                            f"record and are reported as unproven"))
