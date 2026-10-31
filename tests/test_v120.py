@@ -99,9 +99,10 @@ def _hunt(tmp_path, monkeypatch, capsys, workspace, turns):
 
 
 def _sample(tool, workspace):
+    """The first sample line under a tool, without its "/dir (n): " label (v1.2.1)."""
     out = la.web_log_summary(str(workspace), "access.log")["stdout"].splitlines()
     i = next(n for n, line in enumerate(out) if line.strip().startswith(f"{tool}:"))
-    return out[i + 1].strip()
+    return out[i + 1].strip().split("): ", 1)[1]
 
 
 def test_the_hunt_sends_loose_evidence_back_once(tmp_path, monkeypatch, capsys, workspace,
@@ -163,7 +164,8 @@ def test_whatweb_now_reaches_purple(workspace):
     record = {"timeline": [{"type": "tool", "stdout":
                             la.web_log_summary(str(workspace), "access.log")["stdout"]}]}
     found = purple.step_candidates(step2, record, "192.168.92.129")
-    assert found and "WhatWeb/0.6.4" in found[0] and "10:03:42" in found[0]
+    assert found and all("WhatWeb/0.6.4" in x for x in found)
+    assert any("10:03:42" in x for x in found)      # its first request, GET /
 
 
 @pytest.mark.parametrize("ua,tool", [
@@ -185,3 +187,38 @@ def test_an_ordinary_browser_is_not_a_tool():
 def test_envelope_exposes_the_two_checks():
     assert envelope.hunt_corpus is envelope._hunt_corpus
     assert envelope.observed is envelope._observed
+
+
+# --------------------------------------------------------------------------- #
+# v1.2.1: one sample per directory
+# --------------------------------------------------------------------------- #
+def test_ffuf_under_backup_now_reaches_purple(workspace):
+    """Step 13 of the live run: 312 ffuf requests under /backup/ that purple could not see."""
+    recon = json.loads((LIVE / RECON).read_text(encoding="utf-8"))
+    step13 = next(s for s in purple.recon_steps(recon) if s["step"] == 13)
+    record = {"timeline": [{"type": "tool", "stdout":
+                            la.web_log_summary(str(workspace), "access.log")["stdout"]}]}
+    found = purple.step_candidates(step13, record, "192.168.92.129")
+    assert found and all("Fuzz Faster U Fool" in x and "GET /backup/" in x for x in found)
+
+
+@pytest.mark.parametrize("path,folder", [
+    ("/backup/x.php", "/backup"), ("/x", "/"), ("/", "/"), ("/a/b/c", "/a/b"),
+    ("/admin/?q=1/2", "/admin"), ("", "/"),
+])
+def test_folder(path, folder):
+    assert la._folder(path) == folder
+
+
+def test_the_busiest_directories_come_first_and_the_list_is_capped(workspace):
+    out = la.web_log_summary(str(workspace), "access.log")["stdout"].splitlines()
+    i = next(n for n, line in enumerate(out) if line.strip().startswith("gobuster:"))
+    block = []
+    for line in out[i + 1:]:
+        if not line.startswith("    "):
+            break
+        block.append(line.strip())
+    assert len(block) == la.MAX_TOOL_DIRS + 1 and block[-1].startswith("...and ")
+    counts = [int(x.split("(", 1)[1].split(")", 1)[0]) for x in block[:-1]]
+    assert counts == sorted(counts, reverse=True)
+

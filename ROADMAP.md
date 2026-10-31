@@ -240,8 +240,8 @@ stay that way until a box gives them something to do.
 
 ## v1.3.0 - next
 
-- A third live run to confirm v1.1.0 and v1.2.0 live: hunt and purple again
-  over the same logs, at about $0.60 for both.
+- ~~A run to confirm v1.1.0 and v1.2.0 live~~: done on 2026-10-27 (hunt 6 of 6
+  findings delivered, purple one call with no corrections); it led to v1.2.1.
 - The early-finish return still has not run live. It needs a target where a
   check fails, such as a web port the agent forgets to enumerate.
 - Windows logs (v0.9.1), if the homelab gains a Windows box.

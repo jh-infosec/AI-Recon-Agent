@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.1] - 2026-10-28
+
+From the confirming run of v1.2.0 on 2026-10-27: hunt and purple again over the second live run's logs. Both v1.1.0 and v1.2.0 held up live. The hunt's evidence check sent two findings back once and every finding reached the envelope (6 of 6, against 3 of 5 before), and purple needed one call with no corrections: 11 of 13 steps seen, 2 refused calls counted as never ran, at $0.24 against $0.41. One of its two blind spots was not the network's.
+
+Fixed: **one sample line per tool hid the directories it worked in.** The known-tools sweep gave one verbatim line per tool, and ffuf's was an `/admin/` request, so its 312 requests under `/backup/` never reached the hunt record and purple rightly called that step a blind spot from what it could see. The sweep now keeps one sample per directory a tool worked in, busiest first, up to eight per tool (`MAX_TOOL_DIRS`), with a count for each: on the live log, ffuf shows `/admin (306)` and `/backup (306)`, gobuster `/`, `/backup` and `/admin` at 4,606 each. Replayed offline, ffuf's `/backup` step now has a candidate line for purple.
+
+Tests: 8 new (978 passed, 6 skipped without a Shadowfax checkout).
+
 ## [1.2.0] - 2026-10-27
 
 Both fixes from the hunt half of the second live run, built and replayed against its real logs and hunt report (`tests/fixtures/live-20261027/`), offline.

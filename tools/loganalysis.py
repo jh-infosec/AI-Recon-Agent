@@ -476,6 +476,14 @@ KNOWN_TOOL_UAS = (
     ("python", re.compile(r"python-requests|python-urllib|aiohttp", re.I)),
 )
 _SAMPLE_CHARS = 300
+MAX_TOOL_DIRS = 8
+
+
+def _folder(path: str) -> str:
+    """The directory a request was made in: /backup/x.php -> /backup, /x -> /."""
+    path = (path or "/").split("?", 1)[0]
+    head = path.rsplit("/", 1)[0] if "/" in path else ""
+    return head or "/"
 
 
 def web_log_summary(workspace: str, source: str = "") -> dict:
@@ -513,8 +521,16 @@ def web_log_summary(workspace: str, source: str = "") -> dict:
         for tool_name, pattern in KNOWN_TOOL_UAS:
             if pattern.search(ua):
                 seen = tools_seen.setdefault(tool_name, {"n": 0, "first": None, "last": None,
-                                                         "sample": line.strip()[:_SAMPLE_CHARS]})
+                                                         "dirs": {}})
                 seen["n"] += 1
+                # One sample per directory the tool worked in, not one per
+                # tool (v1.2.1). With one per tool, ffuf's sample on the live
+                # run was an /admin/ request, so its 312 requests under
+                # /backup/ never reached the hunt record and purple called
+                # that step a blind spot.
+                folder = _folder(path_req)
+                entry = seen["dirs"].setdefault(folder, [0, line.strip()[:_SAMPLE_CHARS]])
+                entry[0] += 1
                 stamp = m.group("ts") if "ts" in m.groupdict() else None
                 seen["first"] = seen["first"] or stamp
                 seen["last"] = stamp or seen["last"]
@@ -555,7 +571,11 @@ def web_log_summary(workspace: str, source: str = "") -> dict:
         for tool_name, seen in sorted(tools_seen.items(), key=lambda kv: -kv[1]["n"]):
             span = f", {seen['first']} to {seen['last']}" if seen["first"] else ""
             lines.append(f"  {tool_name}: {seen['n']} request(s){span}")
-            lines.append(f"    {seen['sample']}")
+            busiest = sorted(seen["dirs"].items(), key=lambda kv: -kv[1][0])
+            for folder, (count, sample) in busiest[:MAX_TOOL_DIRS]:
+                lines.append(f"    {folder} ({count}): {sample}")
+            if len(busiest) > MAX_TOOL_DIRS:
+                lines.append(f"    ...and {len(busiest) - MAX_TOOL_DIRS} more director(ies)")
     if scanners:
         lines.append("Scanner user-agents seen:")
         for s in sorted(scanners):
