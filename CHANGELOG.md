@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.4] - 2026-11-01
+
+From the third homelab run: the same VM with a second web port (8081, a "dev build" site with an empty `/notes/` listing), set up to give the early-finish return something to catch. The agent fingerprinted and enumerated both web ports on its own (5 of 5 checks), so the return still has not run live. SSH, broken on the last run by an OpenSSL mismatch, now answers as OpenSSH 10.6p1 after the VM's packages were updated.
+
+Fixed: **real paths were cut from a saved session by Apache's `.ht*` noise.** The 2026-10-27 session (v1.0.1) saved 129 paths on port 80, 124 of them server-default 403s, which sort first. Loading a snapshot kept the first 100 paths per port and cut all five real ones, so this run was carried forward with nothing on port 80. The model concluded the box had been redeployed and that `robots.txt` was new, and the change report listed `/admin`, `/backup`, `/index.html`, `/javascript` and `/robots.txt` as new paths. v1.0.2 had kept these 403s out of the session diff but not out of the cap. They are now dropped before it, on load, so snapshots already on disk read correctly without a new run.
+
+Tests: 3 new, built from the real 2026-10-27 session (981 passed, 6 skipped without a Shadowfax checkout).
+
 ## [1.2.3] - 2026-11-01
 
 Fixed: **the Shadowfax category guard failed against an older checkout.** `test_v0101.py` asserted that our copy of Shadowfax's native categories equals the checkout's. With v1.2.2's copy updated for Shadowfax v0.32, an older Shadowfax checkout beside the repo (without `forwarding_failed`) failed the test, though being ahead of it is harmless. The guard now checks what it is for: every category the checkout has is in our copy.

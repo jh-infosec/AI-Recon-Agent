@@ -273,7 +273,15 @@ def normalise(raw: dict) -> dict:
         if not isinstance(found, dict):
             continue
         bucket = {}
-        for name, status in list(found.items())[:MAX_PATHS_PER_PORT]:
+        # Server-default 403s are dropped before the cap, not after. A v1.0.1
+        # session saved 129 paths on port 80, 124 of them Apache's own .ht*
+        # denials, which sort first; the cap kept 100 of those and cut all
+        # five real paths, so the next session was told port 80 had none,
+        # concluded the box had been redeployed, and reported /admin,
+        # /backup and robots.txt as new. Fixed here, on load, so snapshots
+        # already on disk read correctly too.
+        real = [(n, st) for n, st in found.items() if not is_server_default(str(n), st)]
+        for name, status in real[:MAX_PATHS_PER_PORT]:
             key = _text(name, 200)
             # Structural check, not just flattening: a value that is not
             # shaped like a URL path did not come from our fuzz parsers, so

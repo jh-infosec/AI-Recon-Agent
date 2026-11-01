@@ -242,8 +242,9 @@ stay that way until a box gives them something to do.
 
 - ~~A run to confirm v1.1.0 and v1.2.0 live~~: done on 2026-10-27 (hunt 6 of 6
   findings delivered, purple one call with no corrections); it led to v1.2.1.
-- The early-finish return still has not run live. It needs a target where a
-  check fails, such as a web port the agent forgets to enumerate.
+- The early-finish return still has not run live. A second web port (8081)
+  did not trip it on 2026-11-01: the agent enumerated both ports unprompted.
+  It needs a target where a check fails, which a capable model rarely allows.
 - Windows logs (v0.9.1), if the homelab gains a Windows box.
 
 ## Not planned
