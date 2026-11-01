@@ -262,7 +262,15 @@ def test_purple_writes_no_envelope(tmp_path, monkeypatch):
 # --------------------------------------------------------------------------- #
 @needs_shadowfax
 def test_our_copy_of_the_native_categories_is_current():
-    assert envelope.SHADOWFAX_NATIVE == _native_categories()
+    """
+    Every category the Shadowfax checkout has must be in our copy, so a new
+    one there fails here. Our copy may be ahead of an older checkout: until
+    v1.2.3 this asserted equality, and a v0.26 checkout beside the repo failed
+    against a copy updated for v0.32, when a key could only collide with a
+    category that checkout does not have.
+    """
+    missing = _native_categories() - envelope.SHADOWFAX_NATIVE
+    assert not missing, f"Shadowfax has native categories our copy lacks: {sorted(missing)}"
 
 
 @needs_shadowfax

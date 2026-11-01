@@ -61,6 +61,8 @@ SHADOWFAX_NATIVE = frozenset({
     # Shadowfax v0.21 to v0.25.
     "history_rewritten", "console_recovery", "admin_account_created",
     "admin_role_granted", "mfa_removed",
+    # Shadowfax v0.26 to v0.32.
+    "forwarding_failed",
 })
 
 MAX_FINDINGS = 500

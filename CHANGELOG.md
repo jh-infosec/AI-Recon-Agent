@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.3] - 2026-11-01
+
+Fixed: **the Shadowfax category guard failed against an older checkout.** `test_v0101.py` asserted that our copy of Shadowfax's native categories equals the checkout's. With v1.2.2's copy updated for Shadowfax v0.32, an older Shadowfax checkout beside the repo (without `forwarding_failed`) failed the test, though being ahead of it is harmless. The guard now checks what it is for: every category the checkout has is in our copy.
+
+## [1.2.2] - 2026-11-01
+
+Updated: **Shadowfax's native detector categories.** Shadowfax v0.27 to v0.32 added one, `forwarding_failed`. It does not collide with any key this emitter uses, so no envelope changes, but the copy in `envelope.py` was out of date and the guard test in `test_v0101.py` failed against a v0.32 checkout, which is what it is there for. Both live runs' envelopes are still accepted by Shadowfax v0.32's validator.
+
 ## [1.2.1] - 2026-10-28
 
 From the confirming run of v1.2.0 on 2026-10-27: hunt and purple again over the second live run's logs. Both v1.1.0 and v1.2.0 held up live. The hunt's evidence check sent two findings back once and every finding reached the envelope (6 of 6, against 3 of 5 before), and purple needed one call with no corrections: 11 of 13 steps seen, 2 refused calls counted as never ran, at $0.24 against $0.41. One of its two blind spots was not the network's.
