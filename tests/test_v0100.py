@@ -144,7 +144,8 @@ def test_every_top_level_module_is_packaged(pyproject):
 
 def test_every_console_command_points_at_a_real_main(pyproject):
     scripts = pyproject["project"]["scripts"]
-    assert set(scripts) == {"ai-recon", "ai-hunt", "ai-purple"}
+    assert set(scripts) == {"ai-recon", "ai-hunt", "ai-purple", "ai-demo",  # ai-demo: v1.3.0
+                            "ai-sigma", "ai-collect"}  # v1.4.0
     for target in scripts.values():
         module, func = target.split(":")
         assert func == "main" and module in pyproject["tool"]["setuptools"]["py-modules"]

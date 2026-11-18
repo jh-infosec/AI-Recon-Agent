@@ -1,6 +1,6 @@
 # ai-recon-agent
 
-**v1.2.4**
+**v1.4.0**
 
 ai-recon-agent is a small security study kit with two halves: a **red-team
 recon agent** for practicing enumeration on machines you're authorized to
@@ -9,6 +9,21 @@ analysis over log files. Both use an AI model as the reasoning engine driving
 a tool-calling loop (the way Horizon3's NodeZero or Pentera work internally),
 scaled down to something you can read end-to-end, run against your own lab,
 and learn from - not a commercial product.
+
+## Try it without a lab
+
+```bash
+git clone https://github.com/jh-infosec/AI-Recon-Agent.git
+cd AI-Recon-Agent
+python demo.py
+```
+
+This replays a real recorded run against my homelab VM: the recon session,
+the hunt through that VM's SSH log, and the purple-team comparison of what the
+defender could and couldn't see. It needs no API key, no target and no
+network, and it scans nothing; it reads the saved reports in
+`tests/fixtures/` and prints them the way a live session does. `--fast` skips
+the pauses, `--list` shows the recorded runs.
 
 ## Authorized use only
 
@@ -191,6 +206,52 @@ ran*, not as a blind spot: there was no traffic to miss.
 It reads two files and calls the API; it never touches a target. It needs a
 box whose logs you can collect, so a homelab VM, not an HTB or THM machine.
 
+## Collecting a homelab target's logs
+
+The hunt needs the target's own logs. `collect.py` fetches them for one recon
+session, over your own SSH access to the VM:
+
+```bash
+python collect.py --recon reports/<session>.json --user kali --dry-run   # see what it will do
+python collect.py --recon reports/<session>.json --user kali
+python hunt.py --logs logs/<the folder it prints>
+```
+
+It runs one short script on the target (sudo asks once) that copies the sshd
+journal, the kernel's `FW-SYN` firewall lines and any Apache or nginx access
+log into a folder in your home directory, then copies that folder to `logs/`
+here and trims the web logs to the session. The window is the recon session,
+padded by two minutes, and it always ends before the collector logs in, so
+your own login is never in the logs being analysed.
+
+It only works on targets allowlisted as `homelab`, refuses this machine, and
+only reads: the one thing it leaves on the target is the folder of copies,
+and it prints the command to remove it.
+
+## Sigma rules
+
+`sigmarules.py` turns the detections the lab kept producing into Sigma, the
+rule format SIEMs import, and checks each one against the logs before
+writing it:
+
+```bash
+python sigmarules.py --logs logs/<folder>     # what fired, and rules/ai-recon-agent.yml
+python sigmarules.py --list                   # the rule set
+```
+
+| Rule | Fires on |
+|---|---|
+| Web recon tool user agent | nmap's scripts, WhatWeb, gobuster, ffuf, nikto, sqlmap and others |
+| Web content brute force | 100 or more 404s from one client in a minute |
+| SSH fingerprinting burst | 4 or more connections dropped before authentication in a minute |
+| Port scan from one source | 25 or more ports from one source in a minute (iptables `FW-SYN` lines) |
+
+Only rules that fired on the given logs are written. On the two lab runs: the
+first (SSH only) gives two SSH fingerprinting alerts, one per nmap scan; the
+second gives one brute force alert and one port scan alert, both on the
+attacker, and nothing on the VM's own traffic. Every rule is validated by
+pySigma in the test suite.
+
 ## The findings envelope
 
 Every recon and hunt session also writes a `<name>.findings.json` in the
@@ -226,6 +287,9 @@ console.py                - coloured output, command echo, finding highlights
 completeness.py           - validates finish-tool payloads
 apiclient.py              - API retry with backoff
 hunt.py                   - BLUE TEAM: threat-hunting loop over logs
+collect.py                - fetches a homelab target's logs for one recon session
+sigmarules.py             - Sigma rules for the lab's detections, checked against its logs
+demo.py                   - replays a recorded lab run; no key, target or network
 purple.py                 - PURPLE: one engagement from both sides, quotes checked
 safety.py                 - recon-side allowlist gate
 paths.py                  - one home folder for allowlist, reports, state, wordlists

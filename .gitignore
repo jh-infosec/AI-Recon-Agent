@@ -25,3 +25,5 @@ dist/
 # not this project's; a live run worth keeping is copied into
 # tests/fixtures/ deliberately (v1.0.0 kept logs/lab131 that way).
 logs/
+# Sigma rules written by sigmarules.py, regenerated from a workspace on demand.
+rules/

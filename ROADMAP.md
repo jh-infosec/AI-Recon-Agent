@@ -238,7 +238,19 @@ stay that way until a box gives them something to do.
   time span and one verbatim line, so a recon step like WhatWeb reaches the
   hunt record and purple.
 
-## v1.3.0 - next
+## v1.3.0 - demo mode (shipped)
+
+- `demo.py` replays a recorded lab run with no key, target or network.
+- Still to do: add the corrected second-run hunt and purple reports as
+  fixtures and offer them as run 2.
+
+## v1.4.0 - Sigma rules and log collection (shipped)
+
+- `sigmarules.py`: Sigma rules for the lab's detections, checked against its
+  logs and validated by pySigma.
+- `collect.py`: one command fetches a homelab target's logs for a session.
+
+## v1.5.0 - next
 
 - ~~A run to confirm v1.1.0 and v1.2.0 live~~: done on 2026-10-27 (hunt 6 of 6
   findings delivered, purple one call with no corrections); it led to v1.2.1.

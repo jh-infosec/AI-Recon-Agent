@@ -574,6 +574,30 @@ before the cap applies, so truncation drops the least interesting entries
 rather than whatever sorted last. Both are display decisions only; the report
 keeps everything.
 
+### demo.py
+
+Replays a recorded lab run from `tests/fixtures/`: recon, hunt and purple,
+printed through `console.py` exactly as a live session prints them. It imports
+no network or API code, which a test checks in a fresh interpreter with every
+socket connect replaced by an error. It exists so the project can be seen
+working without a key, a lab or Kali (v1.3.0).
+
+### sigmarules.py
+
+Sigma rules written from what the lab logged, not by the model, and only
+emitted for a workspace whose logs they fire on. Carries a small evaluator for
+the Sigma subset the rules use, so the tests can run each rule against the
+real lab logs; pySigma validates the YAML. Named to avoid shadowing pySigma's
+own `sigma` package in this flat layout (v1.4.0).
+
+### collect.py
+
+Fetches a homelab target's logs for one recon session over the student's own
+SSH access. The only module that logs in to a target, so it is held to more:
+homelab targets only, never this machine, a validated user, and a remote
+script built only from datetimes and a folder name. Its time window ends
+before its own login so that login is never analysed (v1.4.0).
+
 ### report.py
 
 `SessionReport` and `HuntReport`, both rendering Markdown and self-contained
@@ -1072,6 +1096,7 @@ parsers.py          surface.py          telemetry.py        apiclient.py
 caching.py          completeness.py     console.py          repeats.py
 state.py            logtime.py          purple.py           paths.py
 wordgen.py          envelope.py         envelope-emitter.md
+demo.py             sigmarules.py       collect.py
 tools/recon.py      tools/loganalysis.py
 config/targets.yaml samples/
 requirements.txt    requirements-dev.txt

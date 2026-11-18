@@ -2,3 +2,5 @@
 ruff>=0.6.0
 pip-audit>=2.7.0
 pytest>=8.0.0
+# Validates the Sigma rules in sigmarules.py against the reference parser (v1.4.0).
+pysigma>=2.1.0

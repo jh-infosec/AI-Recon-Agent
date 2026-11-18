@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.4.0] - 2026-11-17
+
+Added: **`sigmarules.py`, Sigma rules for what the lab showed.** purple.py ends with detection ideas in plain English; Sigma is what a SIEM imports. Seven rules (four detections, three of them correlations with their base rules) cover what both homelab runs logged: recon tools by user agent, web content brute force, SSH fingerprinting bursts, and port scans from iptables SYN logging. They are templates written from the real logs, not model output, and only the ones that fire on a workspace's logs are written for it, with the lines and alerts they produced. A small evaluator for the Sigma these rules use (field contains and equals, keywords, `event_count` and `value_count` with a timespan and group-by, and one alert per burst) runs them against the logs; pySigma validates every rule in the tests.
+
+On the real logs: the first run gives two SSH fingerprinting alerts, at 10:39 and 10:41, one per nmap scan; the second gives one brute force alert and one port scan alert at 10:03:20, three seconds after recon started, both on the attacker. The second run's 50 lines from the VM itself, and short constructed sessions of normal browsing, an ordinary SSH login and a client reaching three services, raise nothing.
+
+Added: **`collect.py`, fetching a homelab target's logs for one session.** Collecting by hand went wrong every way it could on the lab runs: commands run on Kali instead of the target, the time window guessed, the student's own SSH login landing in the log, a root-owned copy needing a separate chown. One SSH session now runs a short script on the target (sudo asks once) that copies the sshd journal, the kernel's `FW-SYN` lines and any Apache or nginx access log for the recon session's window into a folder in the home directory; scp brings it to `logs/`, and the web logs are trimmed to the window here. The window always ends a minute before the collector logs in, and it refuses outright when that would cut off the end of the session. It only runs against targets allowlisted as `homelab`, refuses this machine, validates the SSH user, and builds the remote script only from datetimes and a folder name. Tested with stand-in `sudo` and `journalctl`, and against the second run's real access log, where trimming removes the student's curl tests from twelve minutes before recon.
+
+`pysigma` joins the dev requirements. New commands: `ai-sigma`, `ai-collect`.
+
+Tests: 38 new (1,028 passed, 6 skipped without a Shadowfax checkout).
+
+## [1.3.0] - 2026-11-04
+
+Added: **`demo.py`, a replay of a recorded lab run.** Seeing the agents work used to need an Anthropic key, a lab VM and Kali. `python demo.py` (or `ai-demo` when installed) replays the first homelab run end to end: the recon session with every tool call, its exact command, what it found and the model's reasoning; the hunt through the VM's SSH log and its findings; and purple's step-by-step table of what the defender saw, with the one blind spot and the detection ideas. It reads the saved reports in `tests/fixtures/` and prints them through the same console functions a live session uses, so it looks like the real thing because it is the real thing, recorded. It says at the top that it is a replay. `--fast` skips the pauses, `--run` picks a recorded run, `--list` lists them.
+
+It touches nothing: no network, no target, no API. A test runs it in a fresh interpreter with every socket connect replaced by an error and checks that `anthropic` is never imported.
+
+The second lab run is not offered yet. Its saved hunt and purple reports are the early ones (purple's 6 blind spots, before v1.1.0 and v1.2.0 fixed them); the corrected ones will be added as fixtures and offered as run 2.
+
+Tests: 10 new (990 passed, 6 skipped without a Shadowfax checkout).
+
 ## [1.2.4] - 2026-11-01
 
 From the third homelab run: the same VM with a second web port (8081, a "dev build" site with an empty `/notes/` listing), set up to give the early-finish return something to catch. The agent fingerprinted and enumerated both web ports on its own (5 of 5 checks), so the return still has not run live. SSH, broken on the last run by an OpenSSL mismatch, now answers as OpenSSH 10.6p1 after the VM's packages were updated.
