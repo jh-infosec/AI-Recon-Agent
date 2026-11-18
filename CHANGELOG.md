@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.4.1] - 2026-11-18
+
+Fixed: **the allowlist was tracked by git.** `config/targets.yaml` was committed in September 2026 and stayed tracked, because `.gitignore` only stops untracked files from being added. Its history holds every target ever allowlisted (lab VPN and homelab addresses, no credentials), contradicting this project's own rule that the allowlist is never committed, and release zips built from a clone carried it, so unzipping a release since v1.0.2 overwrote the student's own allowlist with the committed copy. The file is removed from the index (it stays on disk, still ignored), release zips no longer include it, and `tests/test_v141.py` fails in any git checkout where the allowlist, or anything from a session (reports, state, logs, generated rules or wordlists), is tracked again. The old commits still hold the history; they are lab addresses, so it is left there rather than rewritten.
+
 ## [1.4.0] - 2026-11-17
 
 Added: **`sigmarules.py`, Sigma rules for what the lab showed.** purple.py ends with detection ideas in plain English; Sigma is what a SIEM imports. Seven rules (four detections, three of them correlations with their base rules) cover what both homelab runs logged: recon tools by user agent, web content brute force, SSH fingerprinting bursts, and port scans from iptables SYN logging. They are templates written from the real logs, not model output, and only the ones that fire on a workspace's logs are written for it, with the lines and alerts they produced. A small evaluator for the Sigma these rules use (field contains and equals, keywords, `event_count` and `value_count` with a timespan and group-by, and one alert per burst) runs them against the logs; pySigma validates every rule in the tests.
